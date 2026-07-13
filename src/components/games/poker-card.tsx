@@ -17,10 +17,14 @@ interface PokerCardProps {
   /** 点击回调 */
   onClick?: () => void;
   /** 尺寸 */
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "hand";
   /** 是否禁用交互 */
   disabled?: boolean;
 }
+
+/** hand 模式的响应式牌面尺寸 */
+const HAND_CARD_WIDTH = "clamp(42px, 8vw, 72px)";
+const HAND_CARD_ASPECT = "0.7";
 
 export function PokerCard({
   card,
@@ -30,13 +34,28 @@ export function PokerCard({
   size = "md",
   disabled = false,
 }: PokerCardProps) {
+  const isHand = size === "hand";
+
   const sizeClasses = {
     sm: "w-10 h-14 text-sm",
     md: "w-16 h-22 text-xl",
     lg: "w-20 h-28 text-2xl",
+    hand: "",
   };
 
   if (faceDown || !card) {
+    if (isHand) {
+      return (
+        <div
+          className={cn(
+            "rounded-lg border-2 border-border bg-primary/80 flex items-center justify-center select-none shadow-md w-full h-full"
+          )}
+          style={{ aspectRatio: HAND_CARD_ASPECT }}
+        >
+          <div className="w-3/4 h-3/4 rounded border border-primary-foreground/20 bg-primary-foreground/10" />
+        </div>
+      );
+    }
     return (
       <div
         className={cn(
@@ -53,6 +72,59 @@ export function PokerCard({
   const isRed = isRedSuit(card.suit);
   const isJoker = card.rank === "small-joker" || card.rank === "big-joker";
 
+  if (isHand) {
+    // 手牌模式：填充父容器，使用 clamp 响应式尺寸，选中高亮由父级控制位移
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          "rounded-lg border-2 flex flex-col items-center justify-center select-none relative w-full h-full",
+          "bg-card shadow-md transition-[box-shadow,border-color,opacity] duration-150",
+          isRed
+            ? "text-red-600 border-red-200 dark:border-red-900/50"
+            : "text-foreground border-border",
+          selected
+            ? "ring-[3px] ring-yellow-400 dark:ring-yellow-600 shadow-[0_0_8px_rgba(250,204,21,0.5)] border-yellow-400 dark:border-yellow-600"
+            : "hover:shadow-lg",
+          disabled && "opacity-60 cursor-not-allowed"
+        )}
+        style={{
+          width: HAND_CARD_WIDTH,
+          aspectRatio: HAND_CARD_ASPECT,
+          maxWidth: "100%",
+        }}
+        aria-label={`${RANK_DISPLAY[card.rank]}${isJoker ? "" : SUIT_SYMBOLS[card.suit]}`}
+      >
+        {/* 左上角点数 */}
+        <span
+          className="absolute top-0.5 left-1 font-bold leading-none"
+          style={{ fontSize: "clamp(10px, 2vw, 16px)" }}
+        >
+          {RANK_DISPLAY[card.rank]}
+        </span>
+
+        {/* 中间花色/图案 */}
+        <span
+          className="font-bold"
+          style={{ fontSize: "clamp(16px, 4vw, 32px)" }}
+        >
+          {isJoker ? (card.rank === "big-joker" ? "JOKER" : "joker") : SUIT_SYMBOLS[card.suit]}
+        </span>
+
+        {/* 右下角点数（旋转） */}
+        <span
+          className="absolute bottom-0.5 right-1 font-bold leading-none rotate-180"
+          style={{ fontSize: "clamp(10px, 2vw, 16px)" }}
+        >
+          {RANK_DISPLAY[card.rank]}
+        </span>
+      </button>
+    );
+  }
+
+  // 非 hand 模式：保持原有逻辑
   return (
     <button
       type="button"
@@ -63,7 +135,6 @@ export function PokerCard({
         "rounded-lg border-2 flex flex-col items-center justify-center select-none relative",
         "bg-card shadow-md transition-all duration-150",
         "min-w-[64px] min-h-[88px]",
-        "elderly-mode:min-w-[80px] elderly-mode:min-h-[112px]",
         isRed
           ? "text-red-600 border-red-200 dark:border-red-900/50"
           : "text-foreground border-border",
@@ -130,13 +201,12 @@ export function PokerCardBack({
       className={cn(
         sizeClasses[size],
         "rounded-lg border-2 border-border bg-primary/80 flex flex-col items-center justify-center select-none shadow-md",
-        "min-w-[64px] min-h-[88px]",
-        "elderly-mode:min-w-[80px] elderly-mode:min-h-[112px]"
+        "min-w-[64px] min-h-[88px]"
       )}
     >
       <div className="w-3/4 h-3/4 rounded border border-primary-foreground/20 bg-primary-foreground/10 flex items-center justify-center">
         {count !== undefined && (
-          <span className="text-primary-foreground font-bold text-lg elderly-mode:text-2xl">
+          <span className="text-primary-foreground font-bold text-lg">
             {count}
           </span>
         )}

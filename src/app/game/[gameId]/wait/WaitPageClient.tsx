@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { getGameById } from "@/data/games";
 import { useRoomStore, type Player } from "@/lib/room-store";
 import { useUserStore } from "@/lib/user-store";
-import { useEffect } from "react";
 
 interface WaitPageClientProps {
   gameId: string;
@@ -129,25 +128,110 @@ function SeatCard({
 
 export function WaitPageClient({ gameId }: WaitPageClientProps) {
   const game = getGameById(gameId);
-  const { currentRoom, startGame, clearRoom } = useRoomStore();
+  const { currentRoom, _hydrated, startGame, clearRoom } = useRoomStore();
   const { guestId } = useUserStore();
 
-  // 如果没有房间或房间不匹配，跳转回房间选择
-  useEffect(() => {
-    if (!currentRoom || currentRoom.gameId !== gameId || currentRoom.status !== "waiting") {
-      window.location.href = `/family-game-platform/game/${gameId}/room`;
-    }
-  }, [currentRoom, gameId]);
+  // 不再使用 useEffect 自动跳回！
+  // 所有跳转只由用户主动操作触发。
 
-  if (!game || !currentRoom || currentRoom.gameId !== gameId) {
+  // store 还没从 localStorage 恢复，显示加载
+  if (!_hydrated) {
     return (
       <div
         className="flex flex-col items-center justify-center min-h-full px-4"
         style={{ backgroundColor: "#FFF9F0" }}
       >
         <div className="text-2xl animate-pulse" style={{ color: "#8B7355" }}>
-          加载中...
+          正在加载...
         </div>
+      </div>
+    );
+  }
+
+  // 游戏不存在
+  if (!game) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center min-h-full px-4"
+        style={{ backgroundColor: "#FFF9F0" }}
+      >
+        <span className="text-6xl mb-4">😕</span>
+        <h1 className="text-2xl font-bold mb-4" style={{ color: "#3D2C1E" }}>
+          游戏未找到
+        </h1>
+        <button
+          className="text-white font-bold text-xl px-8 py-3 rounded-2xl"
+          style={{ backgroundColor: "#F97316", minHeight: "56px" }}
+          onClick={() => { window.location.href = "/family-game-platform/"; }}
+        >
+          返回首页
+        </button>
+      </div>
+    );
+  }
+
+  // 房间不存在 - 不自动跳回，显示错误信息
+  if (!currentRoom) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center min-h-full px-4 gap-6"
+        style={{ backgroundColor: "#FFF9F0" }}
+      >
+        <span className="text-6xl">📭</span>
+        <h1 className="text-2xl font-bold" style={{ color: "#3D2C1E" }}>
+          没有找到房间
+        </h1>
+        <p className="text-lg" style={{ color: "#8B7355" }}>
+          当前没有活跃的房间，请先创建或加入一个房间。
+        </p>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <button
+            className="text-white font-bold text-xl px-8 py-3 rounded-2xl"
+            style={{ backgroundColor: "#22C55E", minHeight: "56px" }}
+            onClick={() => { window.location.href = `/family-game-platform/game/${gameId}/room`; }}
+          >
+            创建房间
+          </button>
+          <button
+            className="text-white font-bold text-xl px-8 py-3 rounded-2xl"
+            style={{ backgroundColor: "#3B82F6", minHeight: "56px" }}
+            onClick={() => { window.location.href = `/family-game-platform/game/${gameId}/room`; }}
+          >
+            加入房间
+          </button>
+          <button
+            className="font-bold text-xl px-8 py-3 rounded-2xl"
+            style={{ backgroundColor: "#F1F5F9", color: "#64748B", minHeight: "56px" }}
+            onClick={() => { window.location.href = `/family-game-platform/game/${gameId}/select`; }}
+          >
+            返回选择页
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 房间游戏ID不匹配 - 不自动跳回，显示错误信息
+  if (currentRoom.gameId !== gameId) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center min-h-full px-4 gap-6"
+        style={{ backgroundColor: "#FFF9F0" }}
+      >
+        <span className="text-6xl">⚠️</span>
+        <h1 className="text-2xl font-bold" style={{ color: "#3D2C1E" }}>
+          房间游戏不匹配
+        </h1>
+        <p className="text-lg" style={{ color: "#8B7355" }}>
+          当前房间的游戏与所选游戏不一致。房间号：{currentRoom.roomCode}
+        </p>
+        <button
+          className="text-white font-bold text-xl px-8 py-3 rounded-2xl"
+          style={{ backgroundColor: "#F97316", minHeight: "56px" }}
+          onClick={() => { window.location.href = `/family-game-platform/game/${gameId}/room`; }}
+        >
+          返回好友房
+        </button>
       </div>
     );
   }

@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   type GameState,
   type GameMode,
   type Position,
-  type Player,
   createInitialState,
   makeMove,
   undoMove,
@@ -37,6 +36,39 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
   const [showDrawDialog, setShowDrawDialog] = useState(false);
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false);
   const [lastMove, setLastMove] = useState<Position | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [boardSize, setBoardSize] = useState(0);
+
+  // Dynamic board sizing based on container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const recalc = () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      // Board should be a square that fits in the container
+      // Reserve space for controls at bottom (~140px) and status bar (~36px)
+      const availH = h - 180; // approximate controls height
+      const availW = w;
+      const size = Math.max(100, Math.floor(Math.min(availW, availH)));
+      setBoardSize(size);
+    };
+
+    recalc();
+
+    const observer = new ResizeObserver(() => {
+      recalc();
+    });
+    observer.observe(container);
+    window.addEventListener("resize", recalc);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recalc);
+    };
+  }, []);
 
   const isWinningCell = useCallback(
     (row: number, col: number) => {
@@ -112,7 +144,7 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
       return `${getPlayerEmoji(state.winner!)} ${getPlayerLabel(state.winner!)} 获胜！`;
     }
     if (state.status === "draw") {
-      return "🤝 平局！";
+      return "平局！";
     }
     if (state.status === "surrender") {
       const loser = state.surrenderPlayer!;
@@ -125,41 +157,29 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
   const canUndo = state.history.length > 0 && state.status === "playing";
 
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-3xl mx-auto px-2">
-      {/* Status bar */}
+    <div ref={containerRef} className="flex flex-col items-center justify-center w-full h-full gap-1 overflow-hidden">
+      {/* Status bar - compact */}
       <div
-        className={cn(
-          "w-full flex items-center justify-between rounded-xl border border-border bg-card p-4",
-          "elderly-mode:p-6"
-        )}
+        className="shrink-0 w-full flex items-center justify-between px-2 rounded-lg bg-card border border-border"
+        style={{ height: "36px" }}
       >
-        <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "text-2xl font-bold",
-              state.status === "playing"
-                ? state.currentPlayer === "black"
-                  ? "text-black dark:text-white"
-                  : "text-neutral-500 dark:text-neutral-300"
-                : "text-primary"
-            )}
-          >
-            {statusText}
-          </span>
-        </div>
-        <div className="text-sm text-muted-foreground elderly-mode:text-lg">
-          步数: {state.history.length}
-        </div>
+        <span className="text-sm font-bold truncate max-w-[60%]">
+          {statusText}
+        </span>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {state.history.length}步
+        </span>
       </div>
 
-      {/* Board */}
+      {/* Board - adaptive square */}
       <div
-        className={cn(
-          "relative rounded-xl border-2 border-amber-700/40 dark:border-amber-600/30",
-          "bg-amber-100 dark:bg-amber-950/40",
-          "shadow-lg overflow-hidden",
-          "w-full aspect-square max-w-[min(100vw-2rem,600px)]"
-        )}
+        className="shrink-0 relative rounded-xl border-2 border-amber-700/40 dark:border-amber-600/30 bg-amber-100 dark:bg-amber-950/40 shadow-lg overflow-hidden"
+        style={{
+          width: boardSize > 0 ? `${boardSize}px` : "100%",
+          aspectRatio: "1",
+          maxWidth: "100%",
+          maxHeight: "calc(100% - 190px)",
+        }}
       >
         {/* Grid lines */}
         <svg
@@ -167,7 +187,6 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
           viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
           preserveAspectRatio="none"
         >
-          {/* Horizontal lines */}
           {Array.from({ length: BOARD_SIZE }, (_, i) => (
             <line
               key={`h-${i}`}
@@ -180,7 +199,6 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
               strokeWidth={0.06}
             />
           ))}
-          {/* Vertical lines */}
           {Array.from({ length: BOARD_SIZE }, (_, i) => (
             <line
               key={`v-${i}`}
@@ -193,7 +211,6 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
               strokeWidth={0.06}
             />
           ))}
-          {/* Star points (tian yuan and others) */}
           {[3, 7, 11].map((r) =>
             [3, 7, 11].map((c) => (
               <circle
@@ -255,56 +272,65 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="w-full grid grid-cols-2 gap-3">
-        <Button
-          variant="outline"
+      {/* Controls - compact grid */}
+      <div className="shrink-0 w-full grid grid-cols-4 gap-[6px] px-1" style={{ maxWidth: boardSize > 0 ? `${boardSize}px` : "400px" }}>
+        <button
           onClick={handleUndo}
           disabled={!canUndo}
           className={cn(
-            "h-14 text-lg font-medium elderly-mode:h-16 elderly-mode:text-xl"
+            "min-h-[44px] rounded-lg text-[14px] font-medium border border-border bg-card",
+            "disabled:opacity-50 active:scale-95 transition-transform select-none",
+            "hover:bg-accent"
           )}
+          style={{ touchAction: "manipulation" }}
         >
-          ↩️ 悔棋
-        </Button>
-        <Button
-          variant="outline"
+          悔棋
+        </button>
+        <button
           onClick={handleDraw}
           disabled={state.status !== "playing"}
           className={cn(
-            "h-14 text-lg font-medium elderly-mode:h-16 elderly-mode:text-xl"
+            "min-h-[44px] rounded-lg text-[14px] font-medium border border-border bg-card",
+            "disabled:opacity-50 active:scale-95 transition-transform select-none",
+            "hover:bg-accent"
           )}
+          style={{ touchAction: "manipulation" }}
         >
-          🤝 求和
-        </Button>
-        <Button
-          variant="destructive"
+          求和
+        </button>
+        <button
           onClick={handleSurrender}
           disabled={state.status !== "playing"}
           className={cn(
-            "h-14 text-lg font-medium elderly-mode:h-16 elderly-mode:text-xl"
+            "min-h-[44px] rounded-lg text-[14px] font-medium bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+            "disabled:opacity-50 active:scale-95 transition-transform select-none",
+            "hover:opacity-90"
           )}
+          style={{ touchAction: "manipulation" }}
         >
-          🏳️ 认输
-        </Button>
-        <Button
-          variant="default"
+          认输
+        </button>
+        <button
           onClick={handleRestart}
           className={cn(
-            "h-14 text-lg font-medium elderly-mode:h-16 elderly-mode:text-xl"
+            "min-h-[44px] rounded-lg text-[14px] font-medium bg-primary text-primary-foreground",
+            "active:scale-95 transition-transform select-none",
+            "hover:opacity-90"
           )}
+          style={{ touchAction: "manipulation" }}
         >
-          🔄 重新开始
-        </Button>
+          重开
+        </button>
       </div>
 
-      <Button
-        variant="ghost"
+      {/* Back button */}
+      <button
         onClick={() => { window.location.href = "/family-game-platform/game/gomoku/menu"; }}
-        className="h-14 text-lg elderly-mode:h-16 elderly-mode:text-xl"
+        className="shrink-0 text-sm text-muted-foreground hover:text-foreground active:scale-95 transition-all select-none"
+        style={{ touchAction: "manipulation" }}
       >
-        ← 返回菜单
-      </Button>
+        &larr; 返回菜单
+      </button>
 
       {/* Draw Dialog */}
       <Dialog open={showDrawDialog} onOpenChange={setShowDrawDialog}>

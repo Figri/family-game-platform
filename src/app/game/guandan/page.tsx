@@ -1,47 +1,16 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import { GuandanGame } from "@/components/games/guandan-game";
+import { GameWrapper } from "@/components/game-wrapper";
 
 function GuandanGameContent() {
-  const searchParams = useSearchParams();
-  const mode = searchParams.get("mode") || "pve";
   const backUrl = "/family-game-platform/game/guandan/select";
 
   return (
-    <div className="flex flex-col min-h-full bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => { window.location.href = backUrl; }}
-            className="text-2xl hover:scale-110 transition-transform"
-            aria-label="返回菜单"
-          >
-            ←
-          </button>
-          <div className="flex flex-col">
-            <h1 className="text-lg font-bold leading-tight elderly-mode:text-2xl">
-              掼蛋
-            </h1>
-            <span className="text-xs text-muted-foreground elderly-mode:text-base">
-              {mode === "room" ? "👥 好友房" : "🤖 人机对战"}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      {/* Game Board */}
-      <main className="flex-1 flex items-start justify-center">
-        <GuandanGame onBack={() => { window.location.href = backUrl; }} />
-      </main>
-
-      {/* Footer */}
-      <footer className="text-center py-4 text-xs text-muted-foreground border-t border-border elderly-mode:text-base">
-        家庭游戏平台 · 掼蛋
-      </footer>
-    </div>
+    <GameWrapper>
+      <GuandanGame onBack={() => { window.location.href = backUrl; }} />
+    </GameWrapper>
   );
 }
 

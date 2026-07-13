@@ -4,47 +4,43 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { GomokuBoard } from "@/components/games/gomoku-board";
 import { type GameMode } from "@/lib/games/gomoku";
-import { cn } from "@/lib/utils";
+import { GameWrapper } from "@/components/game-wrapper";
 
 function GomokuGameContent() {
   const searchParams = useSearchParams();
   const modeParam = searchParams.get("mode");
   const mode: GameMode = modeParam === "pve" || modeParam === "room" ? "pve" : "pvp";
-  const backUrl = "/family-game-platform/game/gomoku/select";
 
   return (
-    <div className="flex flex-col min-h-full bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => { window.location.href = backUrl; }}
-            className="text-2xl hover:scale-110 transition-transform"
-            aria-label="返回菜单"
-          >
-            ←
-          </button>
-          <div className="flex flex-col">
-            <h1 className="text-lg font-bold leading-tight elderly-mode:text-2xl">
-              五子棋
-            </h1>
-            <span className="text-xs text-muted-foreground elderly-mode:text-base">
-              {modeParam === "room" ? "👥 好友房" : mode === "pve" ? "🤖 人机对战" : "👥 双人对战"}
+    <GameWrapper>
+      <div className="flex flex-col h-full w-full overflow-hidden bg-background">
+        {/* Header - compact */}
+        <header
+          className="shrink-0 flex items-center justify-between px-3 bg-background"
+          style={{ height: "44px" }}
+        >
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { window.location.href = "/family-game-platform/game/gomoku/select"; }}
+              className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              style={{ touchAction: "manipulation" }}
+              aria-label="返回菜单"
+            >
+              &larr;
+            </button>
+            <span className="text-base font-bold">五子棋</span>
+            <span className="text-xs text-muted-foreground">
+              {modeParam === "room" ? "好友房" : mode === "pve" ? "人机" : "双人"}
             </span>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Game Board */}
-      <main className={cn("flex-1 flex items-start justify-center py-4")}>
-        <GomokuBoard mode={mode} />
-      </main>
-
-      {/* Footer */}
-      <footer className="text-center py-4 text-xs text-muted-foreground border-t border-border elderly-mode:text-base">
-        家庭游戏平台 · 五子棋
-      </footer>
-    </div>
+        {/* Game Board - fills remaining space */}
+        <main className="flex-1 min-h-0 flex items-center justify-center px-2 overflow-hidden">
+          <GomokuBoard mode={mode} />
+        </main>
+      </div>
+    </GameWrapper>
   );
 }
 
@@ -52,7 +48,10 @@ export default function GomokuPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex flex-col min-h-full bg-background items-center justify-center">
+        <div
+          className="flex flex-col bg-background items-center justify-center"
+          style={{ width: "100vw", height: "100dvh" }}
+        >
           <div className="text-2xl animate-pulse">加载中...</div>
         </div>
       }

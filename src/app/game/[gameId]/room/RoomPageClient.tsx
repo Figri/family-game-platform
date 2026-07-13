@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { getGameById } from "@/data/games";
-import { useRoomStore } from "@/lib/room-store";
+import { useRoomStore, findRoomInStorage } from "@/lib/room-store";
 import { useUserStore } from "@/lib/user-store";
 
 interface RoomPageClientProps {
@@ -12,11 +12,14 @@ interface RoomPageClientProps {
 
 export function RoomPageClient({ gameId }: RoomPageClientProps) {
   const game = getGameById(gameId);
-  const { createRoom, joinRoom, currentRoom } = useRoomStore();
+  const { createRoom, joinRoomFromStorage, _hydrated } = useRoomStore();
   const { guestId, nickname, getAvatarEmoji } = useUserStore();
 
   const [showJoinInput, setShowJoinInput] = useState(false);
   const [roomCodeInput, setRoomCodeInput] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState("");
 
   if (!game) {
     return (
@@ -39,45 +42,81 @@ export function RoomPageClient({ gameId }: RoomPageClientProps) {
     );
   }
 
+  // store 还没从 localStorage 恢复，显示加载
+  if (!_hydrated) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center min-h-full px-4"
+        style={{ backgroundColor: "#FFF9F0" }}
+      >
+        <div className="text-2xl animate-pulse" style={{ color: "#8B7355" }}>
+          正在加载...
+        </div>
+      </div>
+    );
+  }
+
   // 解析最大玩家数
   const playerMatch = game.players.match(/(\d+)/g);
   const maxPlayers = playerMatch ? Math.max(...playerMatch.map(Number)) : 4;
 
   const handleCreateRoom = () => {
-    const room = createRoom(
-      gameId,
-      nickname || guestId,
-      getAvatarEmoji(),
-      guestId,
-      maxPlayers
-    );
-    toast.success(`房间创建成功！房号：${room.roomCode}`);
-    window.location.href = `/family-game-platform/game/${gameId}/wait`;
+    if (creating) return;
+    setCreating(true);
+    try {
+      const room = createRoom(
+        gameId,
+        nickname || guestId,
+        getAvatarEmoji(),
+        guestId,
+        maxPlayers
+      );
+      toast.success(`房间创建成功！房号：${room.roomCode}`);
+      // 创建完成后才跳转
+      window.location.href = `/family-game-platform/game/${gameId}/wait`;
+    } catch {
+      toast.error("房间创建失败，请重新试一次");
+      setCreating(false);
+    }
   };
 
   const handleJoinRoom = () => {
     const code = roomCodeInput.trim();
     if (!/^\d{6}$/.test(code)) {
-      toast.error("请输入6位数字房号");
+      setJoinError("请输入6位数字房号");
       return;
     }
 
-    if (!currentRoom || currentRoom.roomCode !== code) {
-      toast.error("房间不存在，请检查房号");
-      return;
-    }
+    setJoinError("");
+    setJoining(true);
 
-    if (currentRoom.gameId !== gameId) {
-      toast.error("该房号不是当前游戏的房间");
-      return;
-    }
+    try {
+      // 先从 localStorage 查找房间
+      const room = findRoomInStorage(code);
 
-    const success = joinRoom(code, nickname || guestId, getAvatarEmoji(), guestId);
-    if (success) {
-      toast.success("加入房间成功！");
-      window.location.href = `/family-game-platform/game/${gameId}/wait`;
-    } else {
-      toast.error("加入失败，房间可能已满或已开始");
+      if (!room) {
+        setJoinError("没有找到这个房间，请检查房间号");
+        setJoining(false);
+        return;
+      }
+
+      if (room.gameId !== gameId) {
+        setJoinError("该房号不是当前游戏的房间");
+        setJoining(false);
+        return;
+      }
+
+      const success = joinRoomFromStorage(code, nickname || guestId, getAvatarEmoji(), guestId);
+      if (success) {
+        toast.success("加入房间成功！");
+        window.location.href = `/family-game-platform/game/${gameId}/wait`;
+      } else {
+        setJoinError("加入失败，房间可能已满或已开始");
+        setJoining(false);
+      }
+    } catch {
+      setJoinError("加入失败，请重试");
+      setJoining(false);
     }
   };
 
@@ -121,18 +160,31 @@ export function RoomPageClient({ gameId }: RoomPageClientProps) {
         <div className="w-full max-w-md flex flex-col gap-5">
           {/* 创建房间 */}
           <button
-            className="flex flex-col items-center justify-center rounded-2xl text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+            className="flex flex-col items-center justify-center rounded-2xl text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
             style={{
               background: "linear-gradient(135deg, #22C55E, #16A34A)",
               minHeight: "120px",
             }}
             onClick={handleCreateRoom}
+            disabled={creating}
           >
-            <span className="text-4xl mb-2">🏠</span>
-            <span className="text-2xl font-bold">创建房间</span>
-            <span className="text-base opacity-90 mt-1">
-              创建房间，邀请家人加入
-            </span>
+            {creating ? (
+              <>
+                <span className="text-4xl mb-2">⏳</span>
+                <span className="text-2xl font-bold">正在创建房间...</span>
+                <span className="text-base opacity-90 mt-1">
+                  请稍候
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-4xl mb-2">🏠</span>
+                <span className="text-2xl font-bold">创建房间</span>
+                <span className="text-base opacity-90 mt-1">
+                  创建房间，邀请家人加入
+                </span>
+              </>
+            )}
           </button>
 
           {/* 加入房间 */}
@@ -168,16 +220,22 @@ export function RoomPageClient({ gameId }: RoomPageClientProps) {
                 onChange={(e) => {
                   const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                   setRoomCodeInput(val);
+                  setJoinError("");
                 }}
                 className="w-full text-center text-4xl font-bold tracking-[0.5em] rounded-2xl border-2 outline-none py-4"
                 style={{
-                  borderColor: "#3B82F6",
+                  borderColor: joinError ? "#EF4444" : "#3B82F6",
                   backgroundColor: "#F8FAFC",
                   color: "#3D2C1E",
                   minHeight: "72px",
                 }}
                 autoFocus
               />
+              {joinError && (
+                <p className="text-base" style={{ color: "#EF4444" }}>
+                  {joinError}
+                </p>
+              )}
               <div className="flex w-full gap-3">
                 <button
                   className="flex-1 text-lg font-medium rounded-2xl transition-colors"
@@ -189,19 +247,21 @@ export function RoomPageClient({ gameId }: RoomPageClientProps) {
                   onClick={() => {
                     setShowJoinInput(false);
                     setRoomCodeInput("");
+                    setJoinError("");
                   }}
                 >
                   取消
                 </button>
                 <button
-                  className="flex-1 text-white text-lg font-bold rounded-2xl transition-colors hover:opacity-90"
+                  className="flex-1 text-white text-lg font-bold rounded-2xl transition-colors hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{
                     backgroundColor: "#3B82F6",
                     minHeight: "56px",
                   }}
                   onClick={handleJoinRoom}
+                  disabled={joining}
                 >
-                  进入房间
+                  {joining ? "正在加入..." : "进入房间"}
                 </button>
               </div>
             </div>

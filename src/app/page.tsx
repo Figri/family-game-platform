@@ -61,159 +61,151 @@ export default function HomePage() {
   return (
     <div className="flex flex-col flex-1 min-h-full" style={{ backgroundColor: "#FFF9F0" }}>
       {/* 顶部区域 */}
-      <header className="flex items-center justify-between px-4 sm:px-6 py-4">
-        {/* 左侧：Logo */}
-        <div className="flex items-center gap-3">
-          <span className="text-4xl">🎲</span>
-          <div className="flex flex-col">
-            <h1
-              className="text-2xl font-bold leading-tight"
-              style={{ color: "#F97316" }}
-            >
-              乐玩游戏
-            </h1>
-            <span className="text-sm" style={{ color: "#8B7355" }}>
-              家庭娱乐 · 快乐相聚
-            </span>
-          </div>
+      <header className="flex flex-col px-4 sm:px-6 pt-4 pb-2">
+        {/* 标题行 - 独占一整行 */}
+        <div className="mb-2">
+          <h1
+            className="text-3xl sm:text-4xl font-bold leading-tight"
+            style={{ color: "#F97316" }}
+          >
+            小游戏大全
+          </h1>
+          <span className="text-sm" style={{ color: "#C4956A" }}>
+            诗诗出品
+          </span>
         </div>
-
-        {/* 中间偏左：用户信息卡 */}
-        <div
-          className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl cursor-pointer hover:shadow-md transition-shadow"
-          style={{ backgroundColor: "#FFF1E6" }}
-          onClick={() => {
-            setNicknameInput(nickname || "");
-            setEditingNickname(true);
-          }}
-        >
-          <button
-            className="text-3xl leading-none hover:scale-110 transition-transform"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleAvatarClick();
+        {/* 第二行：用户信息 + 设置/帮助 */}
+        <div className="flex items-center justify-between">
+        {/* 左侧：Logo emoji + 用户信息卡 */}
+        <div className="flex items-center gap-2">
+          <span className="text-3xl">🎲</span>
+          {/* 移动端用户信息 */}
+          <div
+            className="flex sm:hidden items-center gap-2 px-3 py-1.5 rounded-2xl cursor-pointer"
+            style={{ backgroundColor: "#FFF1E6" }}
+            onClick={() => {
+              setNicknameInput(nickname || "");
+              setEditingNickname(true);
             }}
           >
-            {avatarEmoji}
-          </button>
-          {!editingNickname ? (
-            <div className="flex items-center gap-1">
-              <span className="text-lg font-medium" style={{ color: "#3D2C1E" }}>
-                {displayName}
-              </span>
-              <span className="text-lg" style={{ color: "#8B7355" }}>
-                ✏️
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-              <input
-                className="px-3 py-1 rounded-lg text-lg border-2 outline-none"
-                style={{
-                  borderColor: "#F3D9C1",
-                  backgroundColor: "#FFFFFF",
-                  color: "#3D2C1E",
-                  minWidth: "120px",
-                }}
-                value={nicknameInput}
-                onChange={(e) => setNicknameInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleNicknameSave();
-                  if (e.key === "Escape") setEditingNickname(false);
-                }}
-                autoFocus
-                maxLength={12}
-              />
-              <button
-                className="px-3 py-1 rounded-lg text-base font-medium text-white"
-                style={{ backgroundColor: "#F97316", minHeight: "36px" }}
-                onClick={handleNicknameSave}
-              >
-                确定
-              </button>
-            </div>
-          )}
+            <span className="text-2xl leading-none">{avatarEmoji}</span>
+            {!editingNickname ? (
+              <div className="flex items-center gap-1">
+                <span className="text-base font-medium" style={{ color: "#3D2C1E" }}>
+                  {displayName}
+                </span>
+                <span className="text-base" style={{ color: "#8B7355" }}>✏️</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <input
+                  className="px-2 py-1 rounded-lg text-base border-2 outline-none"
+                  style={{
+                    borderColor: "#F3D9C1",
+                    backgroundColor: "#FFFFFF",
+                    color: "#3D2C1E",
+                    minWidth: "100px",
+                  }}
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleNicknameSave();
+                    if (e.key === "Escape") setEditingNickname(false);
+                  }}
+                  autoFocus
+                  maxLength={12}
+                />
+                <button
+                  className="px-3 py-1 rounded-lg text-base font-medium text-white"
+                  style={{ backgroundColor: "#F97316", minHeight: "36px" }}
+                  onClick={handleNicknameSave}
+                >
+                  确定
+                </button>
+              </div>
+            )}
+          </div>
+          {/* 桌面端用户信息卡 */}
+          <div
+            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl cursor-pointer hover:shadow-md transition-shadow"
+            style={{ backgroundColor: "#FFF1E6" }}
+            onClick={() => {
+              setNicknameInput(nickname || "");
+              setEditingNickname(true);
+            }}
+          >
+            <button
+              className="text-3xl leading-none hover:scale-110 transition-transform"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAvatarClick();
+              }}
+            >
+              {avatarEmoji}
+            </button>
+            {!editingNickname ? (
+              <div className="flex items-center gap-1">
+                <span className="text-lg font-medium" style={{ color: "#3D2C1E" }}>
+                  {displayName}
+                </span>
+                <span className="text-lg" style={{ color: "#8B7355" }}>
+                  ✏️
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <input
+                  className="px-3 py-1 rounded-lg text-lg border-2 outline-none"
+                  style={{
+                    borderColor: "#F3D9C1",
+                    backgroundColor: "#FFFFFF",
+                    color: "#3D2C1E",
+                    minWidth: "120px",
+                  }}
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleNicknameSave();
+                    if (e.key === "Escape") setEditingNickname(false);
+                  }}
+                  autoFocus
+                  maxLength={12}
+                />
+                <button
+                  className="px-3 py-1 rounded-lg text-base font-medium text-white"
+                  style={{ backgroundColor: "#F97316", minHeight: "36px" }}
+                  onClick={handleNicknameSave}
+                >
+                  确定
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 右侧：设置和帮助 */}
         <div className="flex items-center gap-2">
           <button
-            className="flex items-center gap-2 px-4 py-3 rounded-xl text-lg font-medium text-white transition-shadow hover:shadow-md"
-            style={{ backgroundColor: "#F97316", minHeight: "56px" }}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-base sm:text-lg font-medium text-white transition-shadow hover:shadow-md"
+            style={{ backgroundColor: "#F97316", minHeight: "48px" }}
             onClick={() => { window.location.href = "/family-game-platform/settings/"; }}
           >
             ⚙️ 设置
           </button>
           <button
-            className="flex items-center gap-2 px-4 py-3 rounded-xl text-lg font-medium transition-shadow hover:shadow-md"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-base sm:text-lg font-medium transition-shadow hover:shadow-md"
             style={{
               backgroundColor: "#FFF1E6",
               color: "#92400E",
-              minHeight: "56px",
+              minHeight: "48px",
             }}
             onClick={() => { window.location.href = "/family-game-platform/help/"; }}
           >
             ❓ 帮助
           </button>
         </div>
-      </header>
-
-      {/* 移动端用户信息 */}
-      <div className="sm:hidden px-4 mb-2">
-        <div
-          className="flex items-center gap-2 px-4 py-2 rounded-2xl cursor-pointer"
-          style={{ backgroundColor: "#FFF1E6" }}
-          onClick={() => {
-            setNicknameInput(nickname || "");
-            setEditingNickname(true);
-          }}
-        >
-          <button
-            className="text-3xl leading-none"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleAvatarClick();
-            }}
-          >
-            {avatarEmoji}
-          </button>
-          {!editingNickname ? (
-            <div className="flex items-center gap-1">
-              <span className="text-lg font-medium" style={{ color: "#3D2C1E" }}>
-                {displayName}
-              </span>
-              <span className="text-lg" style={{ color: "#8B7355" }}>✏️</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-              <input
-                className="px-3 py-1 rounded-lg text-lg border-2 outline-none"
-                style={{
-                  borderColor: "#F3D9C1",
-                  backgroundColor: "#FFFFFF",
-                  color: "#3D2C1E",
-                }}
-                value={nicknameInput}
-                onChange={(e) => setNicknameInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleNicknameSave();
-                  if (e.key === "Escape") setEditingNickname(false);
-                }}
-                autoFocus
-                maxLength={12}
-              />
-              <button
-                className="px-3 py-1 rounded-lg text-base font-medium text-white"
-                style={{ backgroundColor: "#F97316", minHeight: "36px" }}
-                onClick={handleNicknameSave}
-              >
-                确定
-              </button>
-            </div>
-          )}
         </div>
-      </div>
-
+      </header>
       {/* 今日推荐 + 最近玩过 */}
       <div className="px-4 sm:px-6 py-4">
         <div className="flex flex-col lg:flex-row gap-4">
@@ -335,7 +327,7 @@ export default function HomePage() {
         className="text-center py-6 text-lg"
         style={{ color: "#8B7355", borderTop: "1px solid #F3D9C1" }}
       >
-        乐玩游戏 · 家庭娱乐 · 快乐相聚
+        小游戏大全 · 诗诗出品
       </footer>
     </div>
   );

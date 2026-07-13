@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  useState,
+} from "react";
 import {
   type TetrisGameState,
   type GameMode,
@@ -23,31 +28,24 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-
-interface TetrisGameProps {
-  mode: GameMode;
-}
-
-const CELL_SIZE = 24;
-const PREVIEW_CELL_SIZE = 20;
-
+/* ------------------------------------------------------------------ */
+/*  Canvas drawing helpers                                             */
+/* ------------------------------------------------------------------ */
 function drawBoard(
   ctx: CanvasRenderingContext2D,
   player: PlayerState,
-  elderlyMode: boolean
+  cellSize: number
 ) {
-  const cell = elderlyMode ? Math.floor(CELL_SIZE * 1.2) : CELL_SIZE;
+  const cell = cellSize;
   const width = cell * BOARD_WIDTH;
   const height = cell * BOARD_HEIGHT;
 
   ctx.clearRect(0, 0, width, height);
 
-  // Background
-  ctx.fillStyle = "var(--background, #ffffff)";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
 
-  // Grid lines
-  ctx.strokeStyle = "var(--border, #e5e7eb)";
+  ctx.strokeStyle = "#e5e7eb";
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= BOARD_WIDTH; i++) {
     ctx.beginPath();
@@ -62,22 +60,26 @@ function drawBoard(
     ctx.stroke();
   }
 
-  // Draw locked cells
   for (let y = 0; y < BOARD_HEIGHT; y++) {
     for (let x = 0; x < BOARD_WIDTH; x++) {
       const color = player.board[y][x];
       if (color) {
-        drawCell(ctx, x, y, color, cell, true);
+        drawCell(ctx, x, y, color, cell, false);
       }
     }
   }
 
-  // Draw ghost piece
   const ghost = getGhostPosition(player.board, player.currentPiece);
   drawPiece(ctx, player.currentPiece, ghost.x, ghost.y, cell, true);
 
-  // Draw current piece
-  drawPiece(ctx, player.currentPiece, player.currentPiece.position.x, player.currentPiece.position.y, cell, false);
+  drawPiece(
+    ctx,
+    player.currentPiece,
+    player.currentPiece.position.x,
+    player.currentPiece.position.y,
+    cell,
+    false
+  );
 }
 
 function drawCell(
@@ -93,14 +95,11 @@ function drawCell(
   const padding = 1;
   const size = cellSize - padding * 2;
 
-  if (isGhost) {
-    ctx.globalAlpha = 0.3;
-  }
+  if (isGhost) ctx.globalAlpha = 0.3;
 
   ctx.fillStyle = color;
   ctx.fillRect(px + padding, py + padding, size, size);
 
-  // Bevel effect
   ctx.globalAlpha = isGhost ? 0.15 : 0.3;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(px + padding, py + padding, size, 2);
@@ -127,7 +126,12 @@ function drawPiece(
       if (piece.shape[y][x]) {
         const boardX = offsetX + x;
         const boardY = offsetY + y;
-        if (boardY >= 0 && boardY < BOARD_HEIGHT && boardX >= 0 && boardX < BOARD_WIDTH) {
+        if (
+          boardY >= 0 &&
+          boardY < BOARD_HEIGHT &&
+          boardX >= 0 &&
+          boardX < BOARD_WIDTH
+        ) {
           drawCell(ctx, boardX, boardY, piece.color, cellSize, isGhost);
         }
       }
@@ -135,174 +139,215 @@ function drawPiece(
   }
 }
 
-function drawNextPiece(
-  ctx: CanvasRenderingContext2D,
-  pieceType: string,
-  elderlyMode: boolean
-) {
-  const cell = elderlyMode ? Math.floor(PREVIEW_CELL_SIZE * 1.2) : PREVIEW_CELL_SIZE;
-  const shape = TETROMINO_SHAPES[pieceType as keyof typeof TETROMINO_SHAPES][0];
-  const color = TETROMINO_COLORS[pieceType as keyof typeof TETROMINO_COLORS];
-  const width = cell * 4;
-  const height = cell * 4;
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "var(--background, #ffffff)";
-  ctx.fillRect(0, 0, width, height);
-
-  const offsetX = Math.floor((4 - shape[0].length) / 2);
-  const offsetY = Math.floor((4 - shape.length) / 2);
-
-  for (let y = 0; y < shape.length; y++) {
-    for (let x = 0; x < shape[y].length; x++) {
-      if (shape[y][x]) {
-        drawCell(ctx, offsetX + x, offsetY + y, color, cell, false);
-      }
-    }
-  }
-}
-
-function PlayerBoard({
-  player,
-  playerIndex,
-  isDuo,
-  elderlyMode,
+/* ------------------------------------------------------------------ */
+/*  Long-press control button                                          */
+/* ------------------------------------------------------------------ */
+function ControlButton({
+  label,
+  onAction,
+  repeatable = false,
+  colorClass = "bg-[#E8E0D6] hover:bg-[#DDD5CB] text-foreground",
+  fullWidth = false,
 }: {
-  player: PlayerState;
-  playerIndex: number;
-  isDuo: boolean;
-  elderlyMode: boolean;
+  label: string;
+  onAction: () => void;
+  repeatable?: boolean;
+  colorClass?: string;
+  fullWidth?: boolean;
 }) {
-  const boardRef = useRef<HTMLCanvasElement>(null);
-  const nextRef = useRef<HTMLCanvasElement>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressedRef = useRef(false);
 
-  useEffect(() => {
-    const boardCanvas = boardRef.current;
-    const nextCanvas = nextRef.current;
-    if (!boardCanvas || !nextCanvas) return;
+  const start = useCallback(() => {
+    if (pressedRef.current) return;
+    pressedRef.current = true;
 
-    const boardCtx = boardCanvas.getContext("2d");
-    const nextCtx = nextCanvas.getContext("2d");
-    if (!boardCtx || !nextCtx) return;
+    onAction();
 
-    drawBoard(boardCtx, player, elderlyMode);
-    drawNextPiece(nextCtx, player.nextPiece, elderlyMode);
-  }, [player, elderlyMode]);
+    if (!repeatable) return;
 
-  const cell = elderlyMode ? Math.floor(CELL_SIZE * 1.2) : CELL_SIZE;
-  const previewCell = elderlyMode ? Math.floor(PREVIEW_CELL_SIZE * 1.2) : PREVIEW_CELL_SIZE;
-  const boardWidth = cell * BOARD_WIDTH;
-  const boardHeight = cell * BOARD_HEIGHT;
-  const previewSize = previewCell * 4;
+    timeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(() => {
+        onAction();
+      }, 80);
+    }, 200);
+  }, [onAction, repeatable]);
 
-  const playerColors = ["text-cyan-600", "text-orange-600"];
-  const playerLabels = ["玩家1", "玩家2"];
+  const stop = useCallback(() => {
+    pressedRef.current = false;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stop, [stop]);
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      {isDuo && (
-        <span className={cn("text-lg font-bold", playerColors[playerIndex], "elderly-mode:text-2xl")}>
-          {playerLabels[playerIndex]}
-        </span>
+    <button
+      onTouchStart={(e) => {
+        e.preventDefault();
+        start();
+      }}
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        stop();
+      }}
+      onTouchCancel={stop}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        start();
+      }}
+      onMouseUp={stop}
+      onMouseLeave={stop}
+      className={cn(
+        "flex items-center justify-center rounded-xl font-semibold select-none",
+        "active:scale-95 transition-transform duration-75",
+        "text-[18px] leading-tight",
+        "min-h-[48px] min-w-[48px] px-3",
+        fullWidth && "w-full",
+        colorClass
       )}
-
-      <div className="flex gap-3">
-        {/* Main board */}
-        <div className="relative border-2 border-border rounded-lg overflow-hidden bg-background">
-          <canvas
-            ref={boardRef}
-            width={boardWidth}
-            height={boardHeight}
-            className="block"
-            style={{ width: boardWidth, height: boardHeight }}
-          />
-        </div>
-
-        {/* Side panel */}
-        <div className="flex flex-col gap-3">
-          {/* Next piece */}
-          <div className="border-2 border-border rounded-lg overflow-hidden bg-background p-2">
-            <p className="text-xs font-semibold text-muted-foreground text-center mb-1 elderly-mode:text-base">
-              下一个
-            </p>
-            <canvas
-              ref={nextRef}
-              width={previewSize}
-              height={previewSize}
-              className="block"
-              style={{ width: previewSize, height: previewSize }}
-            />
-          </div>
-
-          {/* Stats */}
-          <div className="border-2 border-border rounded-lg p-3 bg-background flex flex-col gap-2 min-w-[100px]">
-            <div>
-              <p className="text-xs text-muted-foreground elderly-mode:text-base">分数</p>
-              <p className="text-lg font-bold elderly-mode:text-2xl">{player.score}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground elderly-mode:text-base">等级</p>
-              <p className="text-lg font-bold elderly-mode:text-2xl">{player.level}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground elderly-mode:text-base">消行</p>
-              <p className="text-lg font-bold elderly-mode:text-2xl">{player.lines}</p>
-            </div>
-            {isDuo && player.garbageQueue > 0 && (
-              <div>
-                <p className="text-xs text-red-500 elderly-mode:text-base">待接收垃圾</p>
-                <p className="text-lg font-bold text-red-500 elderly-mode:text-2xl">{player.garbageQueue}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+      style={{ touchAction: "manipulation" }}
+      aria-label={label}
+    >
+      {label}
+    </button>
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Detect mobile (no keyboard)                                        */
+/* ------------------------------------------------------------------ */
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      setMobile(
+        "ontouchstart" in window ||
+          navigator.maxTouchPoints > 0 ||
+          window.innerWidth < 768
+      );
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return mobile;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main TetrisGame component                                          */
+/* ------------------------------------------------------------------ */
+interface TetrisGameProps {
+  mode: GameMode;
+}
+
 export function TetrisGame({ mode }: TetrisGameProps) {
-  const elderlyMode = false;
+  const isMobile = useIsMobile();
   const stateRef = useRef<TetrisGameState>(createInitialState(mode));
   const [renderTick, setRenderTick] = useState(0);
   const animFrameRef = useRef<number | null>(null);
   const lastDropRef = useRef<number>(0);
   const lastStateRef = useRef<TetrisGameState | null>(null);
 
+  /* Canvas refs */
+  const boardCanvasRef = useRef<HTMLCanvasElement>(null);
+  const boardContainerRef = useRef<HTMLDivElement>(null);
+  const [cellSize, setCellSize] = useState(24);
+
+  /* Dynamic cell-size calculation */
+  const recalcCellSize = useCallback(() => {
+    const container = boardContainerRef.current;
+    if (!container) return;
+    const availH = container.clientHeight;
+    const availW = container.clientWidth;
+    const cellFromH = Math.floor(availH / BOARD_HEIGHT);
+    const cellFromW = Math.floor(availW / BOARD_WIDTH);
+    const cell = Math.max(8, Math.min(cellFromH, cellFromW));
+    setCellSize(cell);
+  }, []);
+
+  useEffect(() => {
+    // Use ResizeObserver for more reliable container size detection
+    const container = boardContainerRef.current;
+    if (!container) return;
+
+    recalcCellSize();
+
+    const observer = new ResizeObserver(() => {
+      recalcCellSize();
+    });
+    observer.observe(container);
+    window.addEventListener("resize", recalcCellSize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recalcCellSize);
+    };
+  }, [recalcCellSize]);
+
+  /* Redraw canvas whenever state or cellSize changes */
+  useEffect(() => {
+    const state = stateRef.current;
+    const canvas = boardCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const player = state.players[0];
+
+    const bw = cellSize * BOARD_WIDTH;
+    const bh = cellSize * BOARD_HEIGHT;
+    canvas.width = bw;
+    canvas.height = bh;
+    canvas.style.width = `${bw}px`;
+    canvas.style.height = `${bh}px`;
+
+    drawBoard(ctx, player, cellSize);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderTick, cellSize]);
+
+  /* ---- Game loop ---- */
   const forceRender = useCallback(() => {
     setRenderTick((t) => t + 1);
   }, []);
 
-  const gameLoop = useCallback((timestamp: number) => {
-    const state = stateRef.current;
-    if (state.status !== "running") {
-      animFrameRef.current = requestAnimationFrame(gameLoop);
-      return;
-    }
-
-    const dropInterval = getDropInterval(state.players[0]?.level || 1);
-
-    // Auto drop for each player
-    state.players.forEach((player, idx) => {
-      if (player.gameOver) return;
-      const playerDropInterval = getDropInterval(player.level);
-      const lastDrop = lastDropRef.current || timestamp;
-      if (timestamp - lastDrop >= playerDropInterval) {
-        const newState = movePiece(stateRef.current, idx, 0, 1);
-        stateRef.current = newState;
-        lastDropRef.current = timestamp;
+  const gameLoop = useCallback(
+    (timestamp: number) => {
+      const state = stateRef.current;
+      if (state.status !== "running") {
+        animFrameRef.current = requestAnimationFrame(gameLoop);
+        return;
       }
-    });
 
-    forceRender();
-    lastStateRef.current = stateRef.current;
-    animFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [forceRender]);
+      state.players.forEach((player, idx) => {
+        if (player.gameOver) return;
+        const playerDropInterval = getDropInterval(player.level);
+        const lastDrop = lastDropRef.current || timestamp;
+        if (timestamp - lastDrop >= playerDropInterval) {
+          const newState = movePiece(stateRef.current, idx, 0, 1);
+          stateRef.current = newState;
+          lastDropRef.current = timestamp;
+        }
+      });
+
+      forceRender();
+      lastStateRef.current = stateRef.current;
+      animFrameRef.current = requestAnimationFrame(gameLoop);
+    },
+    [forceRender]
+  );
 
   const startGameLoop = useCallback(() => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-    }
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     lastDropRef.current = performance.now();
     animFrameRef.current = requestAnimationFrame(gameLoop);
   }, [gameLoop]);
@@ -320,9 +365,7 @@ export function TetrisGame({ mode }: TetrisGameProps) {
       const newState = togglePause(state);
       stateRef.current = newState;
       forceRender();
-      if (newState.status === "running") {
-        startGameLoop();
-      }
+      if (newState.status === "running") startGameLoop();
     }
   }, [forceRender, startGameLoop]);
 
@@ -359,7 +402,6 @@ export function TetrisGame({ mode }: TetrisGameProps) {
     (playerIndex: number, action: string) => {
       const state = stateRef.current;
       if (state.status !== "running") return;
-
       let newState = state;
       switch (action) {
         case "left":
@@ -384,11 +426,10 @@ export function TetrisGame({ mode }: TetrisGameProps) {
     [forceRender]
   );
 
-  // Keyboard controls
+  /* Keyboard controls */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key;
-
       if (key === "Enter") {
         e.preventDefault();
         const state = stateRef.current;
@@ -419,64 +460,191 @@ export function TetrisGame({ mode }: TetrisGameProps) {
         }
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleAction, handlePause, handleRestart, mode]);
 
-  // Start game loop on mount if running
+  /* Start game loop on mount */
   useEffect(() => {
-    if (stateRef.current.status === "running") {
-      startGameLoop();
-    }
-    return () => {
-      stopGameLoop();
-    };
+    if (stateRef.current.status === "running") startGameLoop();
+    return () => stopGameLoop();
   }, [startGameLoop, stopGameLoop]);
 
+  /* ---- Derived state ---- */
   const state = stateRef.current;
   const isGameOver = state.status === "over";
   const isPaused = state.status === "paused";
   const isIdle = state.status === "idle";
+  const player = state.players[0];
 
+  /* ---- Render: Portrait-first layout ---- */
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-4xl mx-auto">
-      {/* Boards */}
-      <div className={cn(
-        "flex gap-4 justify-center",
-        mode === "duo" ? "flex-col sm:flex-row" : "flex-col items-center"
-      )}>
-        {state.players.map((player, idx) => (
-          <div key={idx} className="relative">
-            <PlayerBoard
-              player={player}
-              playerIndex={idx}
-              isDuo={mode === "duo"}
-              elderlyMode={elderlyMode}
-            />
-            {/* Game over overlay per player in duo */}
-            {mode === "duo" && player.gameOver && state.status !== "over" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
-                <p className="text-white text-xl font-bold elderly-mode:text-2xl">已出局</p>
-              </div>
-            )}
+    <>
+      {/* Portrait layout (default, shown on all screen sizes) */}
+      <div className="flex flex-col h-full w-full overflow-hidden">
+        {/* Top info bar - compact single line */}
+        <div
+          className="shrink-0 flex items-center justify-between px-3 bg-[#FFF9F0]"
+          style={{ height: "44px" }}
+        >
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/family-game-platform/game/tetris/select";
+              }}
+              className="text-lg font-semibold text-[#8B7355] hover:text-foreground transition-colors"
+              style={{ touchAction: "manipulation" }}
+              aria-label="返回"
+            >
+              &larr;
+            </button>
+            <span className="text-base font-bold">俄罗斯方块</span>
           </div>
-        ))}
+          <div className="flex items-center gap-3 text-sm font-semibold">
+            <span>
+              分数: <span className="text-[#F97316]">{player.score}</span>
+            </span>
+            <span>
+              消行: <span className="text-[#F97316]">{player.lines}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Middle: game board area - fills remaining space */}
+        <div
+          className="flex-1 min-h-0 flex items-center justify-center overflow-hidden"
+          ref={boardContainerRef}
+        >
+          <div className="border-2 border-[#F3D9C1] rounded-lg overflow-hidden bg-white">
+            <canvas ref={boardCanvasRef} className="block" />
+          </div>
+        </div>
+
+        {/* Bottom controls area - compact */}
+        <div
+          className="shrink-0 flex flex-col items-center gap-[6px] px-3 pb-2 pt-1 bg-[#FFF9F0] overflow-hidden"
+          style={{ touchAction: "manipulation" }}
+        >
+          {mode === "single" ? (
+            <SinglePlayerControls
+              onAction={(action) => handleAction(0, action)}
+              onPause={handlePause}
+              onRestart={handleRestart}
+              isPaused={isPaused}
+              isIdle={isIdle}
+              isGameOver={isGameOver}
+            />
+          ) : (
+            <DuoControls
+              onAction={handleAction}
+              onPause={handlePause}
+              onRestart={handleRestart}
+              isPaused={isPaused}
+              isIdle={isIdle}
+              isGameOver={isGameOver}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Global overlay for idle / paused / game over */}
+      {/* Landscape three-column layout (only for md+ screens, overlay via media query) */}
+      <div className="hidden md:flex game-page-landscape">
+        {/* LEFT PANEL */}
+        <aside
+          className="flex flex-col gap-3 shrink-0"
+          style={{ width: "22%" }}
+        >
+          <button
+            onClick={() => {
+              window.location.href =
+                "/family-game-platform/game/tetris/select";
+            }}
+            className="flex items-center gap-1 text-base font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            style={{ touchAction: "manipulation" }}
+          >
+            <span className="text-xl leading-none">&larr;</span>
+            <span>返回</span>
+          </button>
+
+          <h2 className="text-xl font-bold leading-tight">俄罗斯方块</h2>
+
+          <div className="flex flex-col gap-2">
+            <InfoCard label="分数" value={String(player.score)} />
+            <InfoCard label="消行" value={String(player.lines)} />
+            {mode === "duo" && (
+              <InfoCard label="等级" value={String(player.level)} />
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          <div className="flex flex-col gap-2">
+            <Button
+              onClick={handlePause}
+              disabled={isIdle || isGameOver}
+              className="h-11 text-base font-semibold rounded-xl"
+            >
+              {isPaused ? "继续游戏" : "暂停"}
+            </Button>
+            <Button
+              onClick={handleRestart}
+              variant="outline"
+              className="h-11 text-base font-semibold rounded-xl"
+            >
+              重新开始
+            </Button>
+          </div>
+
+          {!isMobile && (
+            <p className="text-xs text-[#8B7355] leading-snug">
+              方向键/WASD 移动，上/W 旋转，空格 硬降，回车 暂停
+            </p>
+          )}
+        </aside>
+
+        {/* CENTER - Game Board */}
+        <main
+          className="flex items-center justify-center"
+          style={{ width: "45%" }}
+          ref={boardContainerRef}
+        >
+          <div className="border-2 border-[#F3D9C1] rounded-lg overflow-hidden bg-white">
+            <canvas ref={boardCanvasRef} className="block" />
+          </div>
+        </main>
+
+        {/* RIGHT PANEL */}
+        <aside
+          className="flex flex-col items-center justify-center gap-3 shrink-0"
+          style={{ width: "33%" }}
+        >
+          {mode === "single" ? (
+            <SinglePlayerControlsLandscape
+              onAction={(action) => handleAction(0, action)}
+            />
+          ) : (
+            <DuoControlsLandscape onAction={handleAction} />
+          )}
+
+          {isMobile && (
+            <p className="text-xs text-[#8B7355] text-center mt-2">
+              点击右侧按钮控制方块
+            </p>
+          )}
+        </aside>
+      </div>
+
+      {/* ---- Global overlay (idle / paused / game over) ---- */}
       {(isIdle || isPaused || isGameOver) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-background border-2 border-border rounded-xl p-8 flex flex-col items-center gap-4 max-w-sm mx-4">
+          <div className="bg-[#FFF9F0] border-2 border-[#F3D9C1] rounded-2xl p-8 flex flex-col items-center gap-4 max-w-sm mx-4">
             {isIdle && (
               <>
-                <p className="text-2xl font-bold elderly-mode:text-3xl">准备开始</p>
+                <p className="text-2xl font-bold">准备开始</p>
                 <Button
                   onClick={handleStart}
-                  className={cn(
-                    "h-14 px-8 text-xl font-semibold",
-                    "elderly-mode:h-16 elderly-mode:text-2xl"
-                  )}
+                  className="h-14 px-8 text-xl font-semibold rounded-xl"
                 >
                   开始游戏
                 </Button>
@@ -484,13 +652,10 @@ export function TetrisGame({ mode }: TetrisGameProps) {
             )}
             {isPaused && (
               <>
-                <p className="text-2xl font-bold elderly-mode:text-3xl">游戏暂停</p>
+                <p className="text-2xl font-bold">游戏暂停</p>
                 <Button
                   onClick={handlePause}
-                  className={cn(
-                    "h-14 px-8 text-xl font-semibold",
-                    "elderly-mode:h-16 elderly-mode:text-2xl"
-                  )}
+                  className="h-14 px-8 text-xl font-semibold rounded-xl"
                 >
                   继续游戏
                 </Button>
@@ -498,19 +663,22 @@ export function TetrisGame({ mode }: TetrisGameProps) {
             )}
             {isGameOver && (
               <>
-                <p className="text-2xl font-bold elderly-mode:text-3xl">游戏结束</p>
+                <p className="text-2xl font-bold">游戏结束</p>
                 {mode === "duo" && (
-                  <p className="text-xl font-semibold elderly-mode:text-2xl">
+                  <p className="text-xl font-semibold">
                     {state.winner === 0
                       ? "玩家1 获胜！"
                       : state.winner === 1
-                      ? "玩家2 获胜！"
-                      : "平局！"}
+                        ? "玩家2 获胜！"
+                        : "平局！"}
                   </p>
                 )}
                 <div className="flex flex-col gap-2 w-full">
                   {state.players.map((p, idx) => (
-                    <div key={idx} className="flex justify-between text-lg elderly-mode:text-xl">
+                    <div
+                      key={idx}
+                      className="flex justify-between text-lg"
+                    >
                       <span>{mode === "duo" ? `玩家${idx + 1}` : "得分"}</span>
                       <span className="font-bold">{p.score}</span>
                     </div>
@@ -519,20 +687,17 @@ export function TetrisGame({ mode }: TetrisGameProps) {
                 <div className="flex gap-3">
                   <Button
                     onClick={handleRestart}
-                    className={cn(
-                      "h-14 px-6 text-xl font-semibold",
-                      "elderly-mode:h-16 elderly-mode:text-2xl"
-                    )}
+                    className="h-14 px-6 text-xl font-semibold rounded-xl"
                   >
                     重新开始
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => { window.location.href = "/family-game-platform/game/tetris/menu"; }}
-                    className={cn(
-                      "h-14 px-6 text-xl font-semibold",
-                      "elderly-mode:h-16 elderly-mode:text-2xl"
-                    )}
+                    onClick={() => {
+                      window.location.href =
+                        "/family-game-platform/game/tetris/menu";
+                    }}
+                    className="h-14 px-6 text-xl font-semibold rounded-xl"
                   >
                     返回菜单
                   </Button>
@@ -542,201 +707,282 @@ export function TetrisGame({ mode }: TetrisGameProps) {
           </div>
         </div>
       )}
+    </>
+  );
+}
 
-      {/* Control Buttons */}
-      <div className="flex items-center gap-3 w-full justify-center">
-        <Button
-          onClick={handlePause}
+/* ------------------------------------------------------------------ */
+/*  Sub-components                                                     */
+/* ------------------------------------------------------------------ */
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border-2 border-[#F3D9C1] bg-white p-2 flex items-baseline justify-between">
+      <span className="text-sm text-[#8B7355]">{label}</span>
+      <span className="text-lg font-bold text-[#3D2C1E]">{value}</span>
+    </div>
+  );
+}
+
+/* Portrait controls for single player */
+function SinglePlayerControls({
+  onAction,
+  onPause,
+  onRestart,
+  isPaused,
+  isIdle,
+  isGameOver,
+}: {
+  onAction: (action: string) => void;
+  onPause: () => void;
+  onRestart: () => void;
+  isPaused: boolean;
+  isIdle: boolean;
+  isGameOver: boolean;
+}) {
+  return (
+    <>
+      {/* Row 1: Pause + Restart */}
+      <div className="flex gap-2 w-full max-w-[400px]">
+        <button
+          onClick={onPause}
           disabled={isIdle || isGameOver}
-          className={cn(
-            "h-14 px-5 text-lg font-semibold min-w-[80px]",
-            "elderly-mode:h-16 elderly-mode:text-xl"
-          )}
+          className="flex-1 min-h-[48px] rounded-xl text-[18px] font-semibold bg-[#FEF3E2] hover:bg-[#FED7AA] disabled:opacity-50 transition-colors select-none"
+          style={{ touchAction: "manipulation" }}
         >
           {isPaused ? "继续" : "暂停"}
-        </Button>
-        <Button
-          onClick={handleRestart}
-          variant="outline"
-          className={cn(
-            "h-14 px-5 text-lg font-semibold min-w-[80px]",
-            "elderly-mode:h-16 elderly-mode:text-xl"
-          )}
+        </button>
+        <button
+          onClick={onRestart}
+          className="flex-1 min-h-[48px] rounded-xl text-[18px] font-semibold bg-[#FEF3E2] hover:bg-[#FED7AA] transition-colors select-none"
+          style={{ touchAction: "manipulation" }}
         >
           重新开始
-        </Button>
+        </button>
       </div>
 
-      {/* Touch Controls */}
-      <div className="flex flex-col items-center gap-4 w-full">
-        {mode === "single" ? (
-          <div className="flex flex-col items-center gap-2">
-            <div className="grid grid-cols-3 gap-2">
-              <div />
-              <TouchButton
-                onClick={() => handleAction(0, "rotate")}
-                label="旋转"
-                elderlyMode={elderlyMode}
-              />
-              <div />
-              <TouchButton
-                onClick={() => handleAction(0, "left")}
-                label="左"
-                elderlyMode={elderlyMode}
-              />
-              <TouchButton
-                onClick={() => handleAction(0, "down")}
-                label="下"
-                elderlyMode={elderlyMode}
-              />
-              <TouchButton
-                onClick={() => handleAction(0, "right")}
-                label="右"
-                elderlyMode={elderlyMode}
-              />
-            </div>
-            <TouchButton
-              onClick={() => handleAction(0, "hardDrop")}
-              label="硬降"
-              elderlyMode={elderlyMode}
-              variant="primary"
-            />
-          </div>
-        ) : (
-          <div className="flex justify-between w-full max-w-lg gap-4">
-            {/* Player 1 Controls */}
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-sm font-semibold text-cyan-600 elderly-mode:text-lg">
-                玩家1
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                <div />
-                <TouchButton
-                  onClick={() => handleAction(0, "rotate")}
-                  label="旋转"
-                  elderlyMode={elderlyMode}
-                  color="cyan"
-                />
-                <div />
-                <TouchButton
-                  onClick={() => handleAction(0, "left")}
-                  label="左"
-                  elderlyMode={elderlyMode}
-                  color="cyan"
-                />
-                <TouchButton
-                  onClick={() => handleAction(0, "down")}
-                  label="下"
-                  elderlyMode={elderlyMode}
-                  color="cyan"
-                />
-                <TouchButton
-                  onClick={() => handleAction(0, "right")}
-                  label="右"
-                  elderlyMode={elderlyMode}
-                  color="cyan"
-                />
-              </div>
-              <TouchButton
-                onClick={() => handleAction(0, "hardDrop")}
-                label="硬降"
-                elderlyMode={elderlyMode}
-                color="cyan"
-              />
-            </div>
-
-            {/* Player 2 Controls */}
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-sm font-semibold text-orange-600 elderly-mode:text-lg">
-                玩家2
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                <div />
-                <TouchButton
-                  onClick={() => handleAction(1, "rotate")}
-                  label="旋转"
-                  elderlyMode={elderlyMode}
-                  color="orange"
-                />
-                <div />
-                <TouchButton
-                  onClick={() => handleAction(1, "left")}
-                  label="左"
-                  elderlyMode={elderlyMode}
-                  color="orange"
-                />
-                <TouchButton
-                  onClick={() => handleAction(1, "down")}
-                  label="下"
-                  elderlyMode={elderlyMode}
-                  color="orange"
-                />
-                <TouchButton
-                  onClick={() => handleAction(1, "right")}
-                  label="右"
-                  elderlyMode={elderlyMode}
-                  color="orange"
-                />
-              </div>
-              <TouchButton
-                onClick={() => handleAction(1, "hardDrop")}
-                label="硬降"
-                elderlyMode={elderlyMode}
-                color="orange"
-              />
-            </div>
-          </div>
-        )}
+      {/* Row 2: Rotate - wide button */}
+      <div className="w-full max-w-[400px]">
+        <ControlButton
+          label="旋转"
+          onAction={() => onAction("rotate")}
+          colorClass="bg-[#FB923C] hover:bg-[#F97316] text-white"
+          fullWidth
+        />
       </div>
 
-      {/* Instructions */}
-      <div className="text-center text-sm text-muted-foreground elderly-mode:text-base px-2">
-        {mode === "single" ? (
-          <p>方向键/WASD 移动，上/W 旋转，空格 硬降，回车 暂停</p>
-        ) : (
-          <p>
-            玩家1: 方向键/WASD | 玩家2: IJKL/M | 回车 暂停
-          </p>
-        )}
+      {/* Row 3: Left / Down / Right */}
+      <div className="flex gap-2 w-full max-w-[400px]">
+        <ControlButton
+          label="左"
+          onAction={() => onAction("left")}
+          repeatable
+          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
+          fullWidth
+        />
+        <ControlButton
+          label="下"
+          onAction={() => onAction("down")}
+          repeatable
+          colorClass="bg-[#DBEAFE] hover:bg-[#BFDBFE] text-[#3D2C1E]"
+          fullWidth
+        />
+        <ControlButton
+          label="右"
+          onAction={() => onAction("right")}
+          repeatable
+          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
+          fullWidth
+        />
+      </div>
+
+      {/* Row 4: Hard drop - wide orange button */}
+      <div className="w-full max-w-[400px]">
+        <ControlButton
+          label="硬降"
+          onAction={() => onAction("hardDrop")}
+          colorClass="bg-[#F97316] hover:bg-[#EA580C] text-white"
+          fullWidth
+        />
+      </div>
+    </>
+  );
+}
+
+/* Portrait controls for duo */
+function DuoControls({
+  onAction,
+  onPause,
+  onRestart,
+  isPaused,
+  isIdle,
+  isGameOver,
+}: {
+  onAction: (playerIndex: number, action: string) => void;
+  onPause: () => void;
+  onRestart: () => void;
+  isPaused: boolean;
+  isIdle: boolean;
+  isGameOver: boolean;
+}) {
+  return (
+    <>
+      {/* Row 1: Pause + Restart */}
+      <div className="flex gap-2 w-full max-w-[400px]">
+        <button
+          onClick={onPause}
+          disabled={isIdle || isGameOver}
+          className="flex-1 min-h-[48px] rounded-xl text-[18px] font-semibold bg-[#FEF3E2] hover:bg-[#FED7AA] disabled:opacity-50 transition-colors select-none"
+          style={{ touchAction: "manipulation" }}
+        >
+          {isPaused ? "继续" : "暂停"}
+        </button>
+        <button
+          onClick={onRestart}
+          className="flex-1 min-h-[48px] rounded-xl text-[18px] font-semibold bg-[#FEF3E2] hover:bg-[#FED7AA] transition-colors select-none"
+          style={{ touchAction: "manipulation" }}
+        >
+          重新开始
+        </button>
+      </div>
+
+      <div className="flex justify-center w-full max-w-[400px] gap-4">
+        {/* Player 1 */}
+        <div className="flex-1 flex flex-col items-center gap-[6px]">
+          <span className="text-sm font-bold text-cyan-700">玩家1</span>
+          <DuoSingleControls
+            onAction={(a) => onAction(0, a)}
+          />
+        </div>
+        {/* Player 2 */}
+        <div className="flex-1 flex flex-col items-center gap-[6px]">
+          <span className="text-sm font-bold text-orange-600">玩家2</span>
+          <DuoSingleControls
+            onAction={(a) => onAction(1, a)}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* Compact single-player controls for duo portrait */
+function DuoSingleControls({
+  onAction,
+}: {
+  onAction: (action: string) => void;
+}) {
+  return (
+    <>
+      <ControlButton
+        label="旋转"
+        onAction={() => onAction("rotate")}
+        colorClass="bg-[#FB923C] hover:bg-[#F97316] text-white"
+        fullWidth
+      />
+      <div className="flex gap-2 w-full">
+        <ControlButton
+          label="左"
+          onAction={() => onAction("left")}
+          repeatable
+          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
+          fullWidth
+        />
+        <ControlButton
+          label="下"
+          onAction={() => onAction("down")}
+          repeatable
+          colorClass="bg-[#DBEAFE] hover:bg-[#BFDBFE] text-[#3D2C1E]"
+          fullWidth
+        />
+        <ControlButton
+          label="右"
+          onAction={() => onAction("right")}
+          repeatable
+          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
+          fullWidth
+        />
+      </div>
+      <ControlButton
+        label="硬降"
+        onAction={() => onAction("hardDrop")}
+        colorClass="bg-[#F97316] hover:bg-[#EA580C] text-white"
+        fullWidth
+      />
+    </>
+  );
+}
+
+/* Landscape controls - original single player (for md+ screens) */
+function SinglePlayerControlsLandscape({
+  onAction,
+}: {
+  onAction: (action: string) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 w-full max-w-[240px]">
+      <div className="w-full">
+        <ControlButton
+          label="旋转"
+          onAction={() => onAction("rotate")}
+          colorClass="bg-[#FB923C] hover:bg-[#F97316] text-white"
+          fullWidth
+        />
+      </div>
+      <div className="flex w-full gap-2">
+        <ControlButton
+          label="左移"
+          onAction={() => onAction("left")}
+          repeatable
+          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
+        />
+        <ControlButton
+          label="下移"
+          onAction={() => onAction("down")}
+          repeatable
+          colorClass="bg-[#DBEAFE] hover:bg-[#BFDBFE] text-[#3D2C1E]"
+        />
+        <ControlButton
+          label="右移"
+          onAction={() => onAction("right")}
+          repeatable
+          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
+        />
+      </div>
+      <div className="w-full">
+        <ControlButton
+          label="直接落底"
+          onAction={() => onAction("hardDrop")}
+          colorClass="bg-[#F97316] hover:bg-[#EA580C] text-white"
+          fullWidth
+        />
       </div>
     </div>
   );
 }
 
-function TouchButton({
-  onClick,
-  label,
-  elderlyMode,
-  color = "default",
-  variant = "default",
+/* Landscape controls - duo */
+function DuoControlsLandscape({
+  onAction,
 }: {
-  onClick: () => void;
-  label: string;
-  elderlyMode: boolean;
-  color?: "default" | "cyan" | "orange";
-  variant?: "default" | "primary";
+  onAction: (playerIndex: number, action: string) => void;
 }) {
-  const colorClasses = {
-    default: "bg-muted hover:bg-muted/80 text-foreground",
-    cyan: "bg-cyan-100 hover:bg-cyan-200 text-cyan-800 dark:bg-cyan-900 dark:hover:bg-cyan-800 dark:text-cyan-100",
-    orange: "bg-orange-100 hover:bg-orange-200 text-orange-800 dark:bg-orange-900 dark:hover:bg-orange-800 dark:text-orange-100",
-  };
-
-  const primaryClasses =
-    "bg-primary hover:bg-primary/90 text-primary-foreground";
-
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center justify-center rounded-lg font-semibold select-none active:scale-95 transition-transform",
-        variant === "primary" ? primaryClasses : colorClasses[color],
-        elderlyMode ? "w-20 h-20 text-2xl" : "w-16 h-16 text-xl"
-      )}
-      style={{ minWidth: 64, minHeight: 64 }}
-      aria-label={label}
-    >
-      {label}
-    </button>
+    <div className="flex justify-center w-full gap-6">
+      {/* Player 1 */}
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-sm font-bold text-cyan-700">玩家1</span>
+        <SinglePlayerControlsLandscape
+          onAction={(a) => onAction(0, a)}
+        />
+      </div>
+      {/* Player 2 */}
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-sm font-bold text-orange-600">玩家2</span>
+        <SinglePlayerControlsLandscape
+          onAction={(a) => onAction(1, a)}
+        />
+      </div>
+    </div>
   );
 }

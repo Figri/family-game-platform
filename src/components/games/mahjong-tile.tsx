@@ -3,13 +3,17 @@
 import { cn } from "@/lib/utils";
 import { type Tile, type Suit, getSuitName, WIND_NAMES, DRAGON_NAMES } from "@/lib/games/mahjong";
 
+/** hand 模式的响应式麻将牌尺寸 */
+const HAND_TILE_WIDTH = "clamp(28px, 6vw, 48px)";
+const HAND_TILE_ASPECT = "1.4";
+
 interface MahjongTileProps {
   tile?: Tile;
   faceDown?: boolean;
   selected?: boolean;
   disabled?: boolean;
   onClick?: () => void;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "hand";
   className?: string;
 }
 
@@ -38,13 +42,29 @@ export function MahjongTile({
   size = "md",
   className,
 }: MahjongTileProps) {
+  const isHand = size === "hand";
+
   const sizeClasses = {
     sm: "w-10 h-14 text-base",
     md: "w-14 h-20 text-2xl",
     lg: "w-18 h-24 text-3xl",
+    hand: "",
   };
 
   if (faceDown || !tile) {
+    if (isHand) {
+      return (
+        <div
+          className={cn(
+            "rounded-md border-2 border-border bg-muted flex items-center justify-center shadow-sm w-full h-full",
+            className
+          )}
+          style={{ width: HAND_TILE_WIDTH, aspectRatio: HAND_TILE_ASPECT }}
+        >
+          <div className="w-3/4 h-3/4 rounded-sm bg-muted-foreground/20" />
+        </div>
+      );
+    }
     return (
       <div
         className={cn(
@@ -76,6 +96,50 @@ export function MahjongTile({
       : tile.suit === "tong"
       ? "筒"
       : "";
+
+  if (isHand) {
+    // hand 模式：使用 clamp 响应式尺寸，选中高亮由父级控制位移
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          "relative rounded-md border-2 flex flex-col items-center justify-center shadow-sm transition-all select-none w-full h-full",
+          bgClass,
+          colorClass,
+          selected
+            ? "ring-[3px] ring-yellow-400 dark:ring-yellow-600 shadow-[0_0_6px_rgba(250,204,21,0.5)] border-yellow-400 dark:border-yellow-600"
+            : "border-border hover:border-primary/60",
+          disabled && "opacity-50 cursor-not-allowed",
+          className
+        )}
+        style={{ width: HAND_TILE_WIDTH, aspectRatio: HAND_TILE_ASPECT, maxWidth: "100%" }}
+        aria-label={`${displayText}${suitSymbol}`}
+      >
+        <span
+          className="absolute top-[2px] left-1 font-bold leading-none opacity-70"
+          style={{ fontSize: "clamp(8px, 1.5vw, 12px)" }}
+        >
+          {displayText}
+        </span>
+        <span
+          className="font-bold leading-none mt-1"
+          style={{ fontSize: "clamp(12px, 3vw, 20px)" }}
+        >
+          {displayText}
+        </span>
+        {suitSymbol && (
+          <span
+            className="font-medium leading-none mt-px"
+            style={{ fontSize: "clamp(8px, 2vw, 14px)" }}
+          >
+            {suitSymbol}
+          </span>
+        )}
+      </button>
+    );
+  }
 
   return (
     <button

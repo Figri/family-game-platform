@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
+
+export type RoomStatus = "loading" | "waiting" | "connected" | "reconnecting" | "not-found" | "error";
 
 export interface Player {
   id: string;
@@ -50,28 +52,49 @@ function generateAIPlayer(index: number): Player {
   };
 }
 
-/** 根据游戏ID解析最大玩家数 */
-function parseMaxPlayers(playersStr: string): number {
-  const match = playersStr.match(/(\d+)/g);
-  if (!match) return 4;
-  return Math.max(...match.map(Number));
+/**
+ * 查找 localStorage 中某个房间的数据。
+ * 因为 localStorage 是同源的，任何人都能读到所有房间数据（本地模拟方案）。
+ */
+export function findRoomInStorage(roomCode: string): Room | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("family-game-room");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const state = parsed?.state;
+    if (!state?.currentRoom) return null;
+    if (state.currentRoom.roomCode === roomCode) {
+      return state.currentRoom as Room;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 interface RoomState {
   currentRoom: Room | null;
+  /** store 是否已从 localStorage 恢复 */
+  _hydrated: boolean;
+  roomStatus: RoomStatus;
   createRoom: (gameId: string, playerName: string, playerAvatar: string, playerId: string, maxPlayers: number) => Room;
   joinRoom: (roomCode: string, playerName: string, playerAvatar: string, playerId: string) => boolean;
+  joinRoomFromStorage: (roomCode: string, playerName: string, playerAvatar: string, playerId: string) => boolean;
   addAIPlayers: () => void;
   startGame: () => boolean;
   playerDisconnect: (playerId: string) => void;
   playerReconnect: (playerId: string) => void;
   clearRoom: () => void;
+  setRoomStatus: (status: RoomStatus) => void;
 }
 
 export const useRoomStore = create<RoomState>()(
   persist(
     (set, get) => ({
       currentRoom: null,
+      _hydrated: false,
+      roomStatus: "loading" as RoomStatus,
 
       createRoom: (gameId, playerName, playerAvatar, playerId, maxPlayers) => {
         const roomCode = generateCode();
@@ -91,7 +114,7 @@ export const useRoomStore = create<RoomState>()(
           maxPlayers,
           status: "waiting",
         };
-        set({ currentRoom: room });
+        set({ currentRoom: room, roomStatus: "waiting" });
         return room;
       },
 
@@ -117,6 +140,38 @@ export const useRoomStore = create<RoomState>()(
             ...currentRoom,
             players: [...currentRoom.players, newPlayer],
           },
+          roomStatus: "connected",
+        });
+        return true;
+      },
+
+      /**
+       * 从 localStorage 中查找房间并加入。
+       * 用于"加入房间"场景：加入者自己没有 currentRoom，
+       * 需要从存储中找到房主创建的房间。
+       */
+      joinRoomFromStorage: (roomCode, playerName, playerAvatar, playerId) => {
+        const room = findRoomInStorage(roomCode);
+        if (!room) return false;
+        if (room.players.length >= room.maxPlayers) return false;
+        if (room.status !== "waiting") return false;
+        if (room.players.some((p) => p.id === playerId)) return false;
+
+        const newPlayer: Player = {
+          id: playerId,
+          name: playerName,
+          avatar: playerAvatar,
+          isAI: false,
+          isOnline: true,
+          isHost: false,
+        };
+
+        set({
+          currentRoom: {
+            ...room,
+            players: [...room.players, newPlayer],
+          },
+          roomStatus: "connected",
         });
         return true;
       },
@@ -193,10 +248,30 @@ export const useRoomStore = create<RoomState>()(
         });
       },
 
-      clearRoom: () => set({ currentRoom: null }),
+      clearRoom: () => set({ currentRoom: null, roomStatus: "loading" }),
+      setRoomStatus: (status) => set({ roomStatus: status }),
     }),
     {
       name: "family-game-room",
+      storage: createJSONStorage(() => {
+        if (typeof window !== "undefined") return localStorage;
+        return {
+          getItem: () => null,
+          setItem: () => {},
+          removeItem: () => {},
+        };
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state._hydrated = true;
+          // 如果有房间且状态是 waiting，设为 waiting
+          if (state.currentRoom) {
+            state.roomStatus = "waiting";
+          } else {
+            state.roomStatus = "loading";
+          }
+        }
+      },
     }
   )
 );

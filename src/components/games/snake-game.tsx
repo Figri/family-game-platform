@@ -17,30 +17,20 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-
-interface SnakeGameProps {
-  mode: GameMode;
-}
-
-const CANVAS_SIZE = 400;
-
-function getCellSize(gridSize: number): number {
-  return Math.floor(CANVAS_SIZE / gridSize);
-}
-
-function drawGame(ctx: CanvasRenderingContext2D, state: SnakeGameState, elderlyMode: boolean) {
-  const cellSize = getCellSize(state.gridSize);
+function drawGame(
+  ctx: CanvasRenderingContext2D,
+  state: SnakeGameState,
+  cellSize: number,
+  elderlyMode: boolean
+) {
   const actualSize = cellSize * state.gridSize;
 
-  // Clear
   ctx.clearRect(0, 0, actualSize, actualSize);
 
-  // Background
-  ctx.fillStyle = "var(--background, #ffffff)";
+  ctx.fillStyle = "#F6F1E7";
   ctx.fillRect(0, 0, actualSize, actualSize);
 
-  // Grid lines
-  ctx.strokeStyle = "var(--border, #e5e7eb)";
+  ctx.strokeStyle = "rgba(0,0,0,0.06)";
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= state.gridSize; i++) {
     ctx.beginPath();
@@ -53,9 +43,8 @@ function drawGame(ctx: CanvasRenderingContext2D, state: SnakeGameState, elderlyM
     ctx.stroke();
   }
 
-  // Food
   const food = state.food.position;
-  ctx.fillStyle = "#ef4444";
+  ctx.fillStyle = "#F05A47";
   ctx.beginPath();
   const fx = food.x * cellSize + cellSize / 2;
   const fy = food.y * cellSize + cellSize / 2;
@@ -63,9 +52,8 @@ function drawGame(ctx: CanvasRenderingContext2D, state: SnakeGameState, elderlyM
   ctx.arc(fx, fy, fr, 0, Math.PI * 2);
   ctx.fill();
 
-  // Snakes
-  const snakeColors = ["#22c55e", "#3b82f6"];
-  const snakeHeadColors = ["#16a34a", "#2563eb"];
+  const snakeColors = ["#56C271", "#3b82f6"];
+  const snakeHeadColors = ["#176B3A", "#2563eb"];
 
   state.snakes.forEach((snake, si) => {
     if (!snake.alive && snake.body.length === 0) return;
@@ -75,13 +63,12 @@ function drawGame(ctx: CanvasRenderingContext2D, state: SnakeGameState, elderlyM
     snake.body.forEach((seg, i) => {
       const x = seg.x * cellSize;
       const y = seg.y * cellSize;
-      const padding = elderlyMode ? 1 : 1;
+      const padding = 1;
       const size = cellSize - padding * 2;
 
       ctx.fillStyle = i === 0 ? headColor : color;
       ctx.fillRect(x + padding, y + padding, size, size);
 
-      // Eyes on head
       if (i === 0 && snake.alive) {
         ctx.fillStyle = "#ffffff";
         const eyeSize = Math.max(2, cellSize * 0.15);
@@ -95,13 +82,79 @@ function drawGame(ctx: CanvasRenderingContext2D, state: SnakeGameState, elderlyM
   });
 }
 
+function TouchButton({
+  onClick,
+  label,
+  elderlyMode,
+  color = "default",
+}: {
+  onClick: () => void;
+  label: string;
+  elderlyMode: boolean;
+  color?: "default" | "green" | "blue";
+}) {
+  const colorClasses = {
+    default: "bg-muted hover:bg-muted/80 text-foreground",
+    green: "bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-900 dark:hover:bg-green-800 dark:text-green-100",
+    blue: "bg-blue-100 hover:bg-blue-200 text-blue-800 dark:bg-blue-900 dark:hover:bg-blue-800 dark:text-blue-100",
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center justify-center rounded-lg font-semibold select-none active:scale-95 transition-transform",
+        colorClasses[color],
+        elderlyMode ? "w-20 h-20 text-2xl" : "w-14 h-14 text-lg"
+      )}
+      style={{ minWidth: 56, minHeight: 48, touchAction: "manipulation" }}
+      aria-label={label}
+    >
+      {label}
+    </button>
+  );
+}
+
+interface SnakeGameProps {
+  mode: GameMode;
+}
+
 export function SnakeGame({ mode }: SnakeGameProps) {
   const elderlyMode = false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SnakeGameState>(createInitialState(mode));
   const [renderTick, setRenderTick] = useState(0);
   const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStateRef = useRef<SnakeGameState | null>(null);
+  const [cellSize, setCellSize] = useState(20);
+
+  // Dynamic cell size based on container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const recalc = () => {
+      const state = stateRef.current;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      const cell = Math.max(8, Math.floor(Math.min(w, h) / state.gridSize));
+      setCellSize(cell);
+    };
+
+    recalc();
+
+    const observer = new ResizeObserver(() => {
+      recalc();
+    });
+    observer.observe(container);
+    window.addEventListener("resize", recalc);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recalc);
+    };
+  }, []);
 
   const forceRender = useCallback(() => {
     setRenderTick((t) => t + 1);
@@ -118,7 +171,6 @@ export function SnakeGame({ mode }: SnakeGameProps) {
       stateRef.current = newState;
       forceRender();
 
-      // Check game over and save score
       if (newState.status === "over" && lastStateRef.current?.status !== "over") {
         if (mode === "single") {
           const score = newState.snakes[0]?.score ?? 0;
@@ -128,8 +180,7 @@ export function SnakeGame({ mode }: SnakeGameProps) {
             mode: "single",
           });
         } else {
-          // For duo, save both scores
-          newState.snakes.forEach((snake, idx) => {
+          newState.snakes.forEach((snake) => {
             addLeaderboardEntry({
               score: snake.score,
               date: new Date().toISOString(),
@@ -140,7 +191,6 @@ export function SnakeGame({ mode }: SnakeGameProps) {
       }
       lastStateRef.current = newState;
 
-      // Restart loop with new speed
       if (newState.status === "running") {
         const speed = getGameSpeed(newState);
         if (gameLoopRef.current) {
@@ -194,7 +244,6 @@ export function SnakeGame({ mode }: SnakeGameProps) {
     stateRef.current = newState;
     lastStateRef.current = null;
     forceRender();
-    // Auto start after a short delay
     setTimeout(() => {
       const started = togglePause(stateRef.current);
       stateRef.current = started;
@@ -260,8 +309,14 @@ export function SnakeGame({ mode }: SnakeGameProps) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawGame(ctx, stateRef.current, elderlyMode);
-  }, [renderTick, elderlyMode]);
+    const state = stateRef.current;
+    const size = cellSize * state.gridSize;
+    canvas.width = size;
+    canvas.height = size;
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
+    drawGame(ctx, state, cellSize, elderlyMode);
+  }, [renderTick, cellSize, elderlyMode]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -271,7 +326,6 @@ export function SnakeGame({ mode }: SnakeGameProps) {
   }, [stopGameLoop]);
 
   const state = stateRef.current;
-  const cellSize = getCellSize(state.gridSize);
   const actualSize = cellSize * state.gridSize;
 
   const isGameOver = state.status === "over";
@@ -279,150 +333,145 @@ export function SnakeGame({ mode }: SnakeGameProps) {
   const isIdle = state.status === "idle";
 
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-lg mx-auto">
-      {/* Score Board */}
-      <div className="flex items-center justify-between w-full px-2">
-        {mode === "single" ? (
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-foreground elderly-mode:text-2xl">
-              得分: {state.snakes[0]?.score ?? 0}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-4">
-            <span className="text-lg font-bold text-green-600 elderly-mode:text-2xl">
-              玩家1: {state.snakes[0]?.score ?? 0}
-            </span>
-            <span className="text-lg font-bold text-blue-600 elderly-mode:text-2xl">
-              玩家2: {state.snakes[1]?.score ?? 0}
-            </span>
-          </div>
-        )}
+    <div className="flex flex-col h-full w-full overflow-hidden">
+      {/* Top: Score - compact */}
+      <div
+        className="shrink-0 flex items-center justify-between px-3 bg-[#FFF9F0]"
+        style={{ height: "44px" }}
+      >
         <div className="flex items-center gap-2">
-          {isPaused && (
-            <span className="text-sm text-amber-600 font-semibold elderly-mode:text-lg">
-              已暂停
+          <button
+            onClick={() => { window.location.href = "/family-game-platform/game/snake/select"; }}
+            className="text-lg font-semibold text-[#8B7355] hover:text-foreground transition-colors"
+            style={{ touchAction: "manipulation" }}
+            aria-label="返回"
+          >
+            &larr;
+          </button>
+          <span className="text-base font-bold">贪吃蛇</span>
+        </div>
+        <div className="flex items-center gap-3 text-sm font-semibold">
+          {mode === "single" ? (
+            <span>
+              得分: <span className="text-[#F97316]">{state.snakes[0]?.score ?? 0}</span>
             </span>
+          ) : (
+            <>
+              <span className="text-green-600">
+                P1: {state.snakes[0]?.score ?? 0}
+              </span>
+              <span className="text-blue-600">
+                P2: {state.snakes[1]?.score ?? 0}
+              </span>
+            </>
+          )}
+          {isPaused && (
+            <span className="text-amber-600">已暂停</span>
           )}
         </div>
       </div>
 
-      {/* Canvas */}
-      <div className="relative border-2 border-border rounded-lg overflow-hidden bg-background">
-        <canvas
-          ref={canvasRef}
-          width={actualSize}
-          height={actualSize}
-          className="block"
-          style={{
-            width: actualSize,
-            maxWidth: "100%",
-            height: "auto",
-          }}
-        />
+      {/* Middle: Canvas - fills remaining space */}
+      <div
+        className="flex-1 min-h-0 flex items-center justify-center overflow-hidden"
+        ref={containerRef}
+      >
+        <div className="relative border-2 border-border rounded-lg overflow-hidden" style={{ background: "#F6F1E7" }}>
+          <canvas
+            ref={canvasRef}
+            className="block"
+          />
 
-        {/* Overlay for idle / paused / game over */}
-        {(isIdle || isPaused || isGameOver) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 gap-4">
-            {isIdle && (
-              <>
-                <p className="text-white text-2xl font-bold elderly-mode:text-3xl">
-                  准备开始
-                </p>
-                <Button
-                  onClick={handleStart}
-                  className={cn(
-                    "h-14 px-8 text-xl font-semibold",
-                    "elderly-mode:h-16 elderly-mode:text-2xl"
-                  )}
-                >
-                  开始游戏
-                </Button>
-              </>
-            )}
-            {isPaused && (
-              <>
-                <p className="text-white text-2xl font-bold elderly-mode:text-3xl">
-                  游戏暂停
-                </p>
-                <Button
-                  onClick={handlePause}
-                  className={cn(
-                    "h-14 px-8 text-xl font-semibold",
-                    "elderly-mode:h-16 elderly-mode:text-2xl"
-                  )}
-                >
-                  继续游戏
-                </Button>
-              </>
-            )}
-            {isGameOver && (
-              <>
-                <p className="text-white text-2xl font-bold elderly-mode:text-3xl">
-                  游戏结束
-                </p>
-                {mode === "duo" && (
-                  <p className="text-white text-xl font-semibold elderly-mode:text-2xl">
-                    {state.winner === 0
-                      ? "玩家1 获胜！"
-                      : state.winner === 1
-                      ? "玩家2 获胜！"
-                      : "平局！"}
+          {/* Overlay for idle / paused / game over */}
+          {(isIdle || isPaused || isGameOver) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 gap-4">
+              {isIdle && (
+                <>
+                  <p className="text-white text-2xl font-bold">
+                    准备开始
                   </p>
-                )}
-                <div className="flex gap-3">
                   <Button
-                    onClick={handleRestart}
-                    className={cn(
-                      "h-14 px-6 text-xl font-semibold",
-                      "elderly-mode:h-16 elderly-mode:text-2xl"
-                    )}
+                    onClick={handleStart}
+                    className="h-14 px-8 text-xl font-semibold"
                   >
-                    重新开始
+                    开始游戏
                   </Button>
+                </>
+              )}
+              {isPaused && (
+                <>
+                  <p className="text-white text-2xl font-bold">
+                    游戏暂停
+                  </p>
                   <Button
-                    variant="outline"
-                    onClick={() => { window.location.href = "/family-game-platform/game/snake/menu"; }}
-                    className={cn(
-                      "h-14 px-6 text-xl font-semibold bg-white/90",
-                      "elderly-mode:h-16 elderly-mode:text-2xl"
-                    )}
+                    onClick={handlePause}
+                    className="h-14 px-8 text-xl font-semibold"
                   >
-                    返回菜单
+                    继续游戏
                   </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+                </>
+              )}
+              {isGameOver && (
+                <>
+                  <p className="text-white text-2xl font-bold">
+                    游戏结束
+                  </p>
+                  {mode === "duo" && (
+                    <p className="text-white text-xl font-semibold">
+                      {state.winner === 0
+                        ? "玩家1 获胜！"
+                        : state.winner === 1
+                        ? "玩家2 获胜！"
+                        : "平局！"}
+                    </p>
+                  )}
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={handleRestart}
+                      className="h-14 px-6 text-xl font-semibold"
+                    >
+                      重新开始
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => { window.location.href = "/family-game-platform/game/snake/menu"; }}
+                      className="h-14 px-6 text-xl font-semibold bg-white/90"
+                    >
+                      返回菜单
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Control Buttons */}
-      <div className="flex items-center gap-3 w-full justify-center">
-        <Button
-          onClick={handlePause}
-          disabled={isIdle || isGameOver}
-          className={cn(
-            "h-14 px-5 text-lg font-semibold min-w-[80px]",
-            "elderly-mode:h-16 elderly-mode:text-xl"
-          )}
-        >
-          {isPaused ? "继续" : "暂停"}
-        </Button>
-        <Button
-          onClick={handleRestart}
-          variant="outline"
-          className={cn(
-            "h-14 px-5 text-lg font-semibold min-w-[80px]",
-            "elderly-mode:h-16 elderly-mode:text-xl"
-          )}
-        >
-          重新开始
-        </Button>
-      </div>
+      {/* Bottom: Controls - compact */}
+      <div
+        className="shrink-0 flex flex-col items-center gap-[6px] px-3 pb-2 pt-1 bg-[#FFF9F0] overflow-hidden"
+        style={{ touchAction: "manipulation" }}
+      >
+        {/* Pause / Restart row */}
+        <div className="flex gap-2 w-full max-w-[400px]">
+          <button
+            onClick={handlePause}
+            disabled={isIdle || isGameOver}
+            className="flex-1 min-h-[48px] rounded-xl text-[18px] font-semibold bg-[#FEF3E2] hover:bg-[#FED7AA] disabled:opacity-50 transition-colors select-none"
+            style={{ touchAction: "manipulation" }}
+          >
+            {isPaused ? "继续" : "暂停"}
+          </button>
+          <button
+            onClick={handleRestart}
+            className="flex-1 min-h-[48px] rounded-xl text-[18px] font-semibold bg-[#FEF3E2] hover:bg-[#FED7AA] transition-colors select-none"
+            style={{ touchAction: "manipulation" }}
+          >
+            重新开始
+          </button>
+        </div>
 
-      {/* Touch Controls */}
-      <div className="flex flex-col items-center gap-2 w-full">
+        {/* Direction controls */}
         {mode === "single" ? (
           <div className="grid grid-cols-3 gap-2 max-w-[240px]">
             <div />
@@ -450,11 +499,8 @@ export function SnakeGame({ mode }: SnakeGameProps) {
           </div>
         ) : (
           <div className="flex justify-between w-full max-w-md gap-4">
-            {/* Player 1 Controls */}
             <div className="flex flex-col items-center gap-1">
-              <span className="text-sm font-semibold text-green-600 elderly-mode:text-lg">
-                玩家1
-              </span>
+              <span className="text-sm font-semibold text-green-600">玩家1</span>
               <div className="grid grid-cols-3 gap-2">
                 <div />
                 <TouchButton
@@ -484,12 +530,8 @@ export function SnakeGame({ mode }: SnakeGameProps) {
                 />
               </div>
             </div>
-
-            {/* Player 2 Controls */}
             <div className="flex flex-col items-center gap-1">
-              <span className="text-sm font-semibold text-blue-600 elderly-mode:text-lg">
-                玩家2
-              </span>
+              <span className="text-sm font-semibold text-blue-600">玩家2</span>
               <div className="grid grid-cols-3 gap-2">
                 <div />
                 <TouchButton
@@ -522,50 +564,6 @@ export function SnakeGame({ mode }: SnakeGameProps) {
           </div>
         )}
       </div>
-
-      {/* Instructions */}
-      <div className="text-center text-sm text-muted-foreground elderly-mode:text-base px-2">
-        {mode === "single" ? (
-          <p>方向键或 WASD 控制方向，空格键暂停</p>
-        ) : (
-          <p>
-            玩家1: 方向键/WASD | 玩家2: IJKL | 空格键暂停
-          </p>
-        )}
-      </div>
     </div>
-  );
-}
-
-function TouchButton({
-  onClick,
-  label,
-  elderlyMode,
-  color = "default",
-}: {
-  onClick: () => void;
-  label: string;
-  elderlyMode: boolean;
-  color?: "default" | "green" | "blue";
-}) {
-  const colorClasses = {
-    default: "bg-muted hover:bg-muted/80 text-foreground",
-    green: "bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-900 dark:hover:bg-green-800 dark:text-green-100",
-    blue: "bg-blue-100 hover:bg-blue-200 text-blue-800 dark:bg-blue-900 dark:hover:bg-blue-800 dark:text-blue-100",
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center justify-center rounded-lg font-semibold select-none active:scale-95 transition-transform",
-        colorClasses[color],
-        elderlyMode ? "w-20 h-20 text-2xl" : "w-16 h-16 text-xl"
-      )}
-      style={{ minWidth: 64, minHeight: 64 }}
-      aria-label={label}
-    >
-      {label}
-    </button>
   );
 }

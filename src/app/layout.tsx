@@ -11,7 +11,7 @@ const notoSansSC = Noto_Sans_SC({
 });
 
 export const metadata: Metadata = {
-  title: "乐玩游戏 - 家庭娱乐 · 快乐相聚",
+  title: "小游戏大全 - 诗诗出品",
   description: "适合全家人的在线游戏平台",
 };
 

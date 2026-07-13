@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +37,7 @@ import {
   checkSelfHu,
   getCurrentPlayerAction,
 } from "@/lib/games/sichuan-mahjong";
-import { MahjongTile, MahjongHand, MahjongExposed, MahjongDiscard } from "./mahjong-tile";
+import { MahjongTile, MahjongExposed, MahjongDiscard } from "./mahjong-tile";
 
 interface SichuanMahjongGameProps {
   rules?: GameRules;
@@ -45,6 +45,150 @@ interface SichuanMahjongGameProps {
 }
 
 const SUITS: Suit[] = ["wan", "tiao", "tong"];
+
+/** 紧凑手牌布局 - 使用绝对定位实现重叠 */
+function CompactHand({
+  tiles,
+  selectedIds,
+  onClickTile,
+  disabled = false,
+  lastDrawId,
+}: {
+  tiles: Tile[];
+  selectedIds?: string[];
+  onClickTile?: (tile: Tile) => void;
+  disabled?: boolean;
+  /** 最近摸到的牌的 id，用于视觉分离 */
+  lastDrawId?: string | null;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(300);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // clamp(28px, 6vw, 48px) for tile width
+  const tileWidth = useMemo(() => {
+    const vw = typeof window !== "undefined" ? window.innerWidth : 375;
+    const w = Math.min(Math.max(Math.floor(vw * 0.06), 28), 48);
+    return w;
+  }, []);
+
+  // 计算步长：紧凑排列
+  const step = useMemo(() => {
+    const paddingX = 12;
+    const availableWidth = containerWidth - paddingX;
+    const tileCount = tiles.length;
+    if (tileCount <= 1) return tileWidth;
+    const naturalWidth = tileWidth * tileCount;
+    let s = tileWidth;
+    if (naturalWidth > availableWidth) {
+      s = (availableWidth - tileWidth) / (tileCount - 1);
+    }
+    return Math.max(s, tileWidth * 0.22);
+  }, [tiles.length, tileWidth, containerWidth]);
+
+  const tileHeight = Math.floor(tileWidth * 1.4);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative flex items-end justify-center w-full"
+      style={{ height: tileHeight + 12 }}
+    >
+      <div
+        className="relative"
+        style={{
+          width: step * (tiles.length - 1) + tileWidth,
+          height: tileHeight + 12,
+        }}
+      >
+        {tiles.map((tile, idx) => {
+          const isSelected = selectedIds?.includes(tile.id);
+          const isLastDraw = tile.id === lastDrawId;
+          // 摸到的牌保留稍大间距（视觉上分离）
+          const extraGap = isLastDraw && idx > 0 ? 6 : 0;
+          return (
+            <div
+              key={tile.id}
+              className="absolute top-0"
+              style={{
+                left: idx * step + extraGap,
+                zIndex: idx + (isSelected ? 100 : 0),
+                transform: isSelected ? "translateY(-8px)" : "translateY(0)",
+                transition: "transform 0.15s ease",
+              }}
+            >
+              <MahjongTile
+                tile={tile}
+                selected={isSelected}
+                disabled={disabled}
+                onClick={() => {
+                  if (!disabled) onClickTile?.(tile);
+                }}
+                size="hand"
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 其他玩家的牌背 - 只显示有限数量 */
+function OpponentTileBacks({
+  count,
+  variant,
+}: {
+  count: number;
+  variant: "top" | "left" | "right";
+}) {
+  const showCount = Math.min(Math.max(Math.min(count, 5), 5), 8);
+
+  if (variant === "top") {
+    return (
+      <div className="flex items-center gap-0.5">
+        {Array.from({ length: showCount }).map((_, i) => (
+          <div
+            key={i}
+            className="w-6 h-8 rounded border border-border bg-muted shrink-0"
+          >
+            <div className="w-3/4 h-3/4 rounded-sm bg-muted-foreground/20 mx-auto mt-[3px]" />
+          </div>
+        ))}
+        <span className="text-xs text-muted-foreground ml-1">
+          剩余 {count} 张
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      {Array.from({ length: showCount }).map((_, i) => (
+        <div
+          key={i}
+          className="w-6 h-8 rounded border border-border bg-muted shrink-0"
+        >
+          <div className="w-3/4 h-3/4 rounded-sm bg-muted-foreground/20 mx-auto mt-[3px]" />
+        </div>
+      ))}
+      <span className="text-xs text-muted-foreground mt-0.5">
+        剩余 {count} 张
+      </span>
+    </div>
+  );
+}
 
 export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -92,7 +236,6 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
         }, 1200);
       }
     } else if (gameState.phase === "lacking") {
-      // AI自动定缺
       const needAiLack = gameState.players.some((p, i) => i !== 0 && !p.lack);
       if (needAiLack) {
         timerRef.current = setTimeout(() => {
@@ -119,7 +262,6 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
       const exists = prev.find((t) => t.id === tile.id);
       if (exists) return prev.filter((t) => t.id !== tile.id);
       if (prev.length >= 3) return prev;
-      // 必须同花色
       if (prev.length > 0 && prev[0].suit !== tile.suit) return prev;
       return [...prev, tile];
     });
@@ -130,7 +272,6 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
     setGameState((prev) => {
       if (!prev) return prev;
       const after = playerSelectSwap(prev, 0, selectedSwapTiles);
-      // AI也自动选
       const afterAi = executeSwap(after);
       return afterAi;
     });
@@ -223,31 +364,28 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
   // 换三张阶段
   if (gameState.phase === "swapping") {
     return (
-      <div className="flex flex-col items-center gap-6 p-4">
-        <h2 className={cn("text-xl font-bold", elderlyMode && "text-3xl")}>
-          换三张
-        </h2>
-        <p className={cn("text-muted-foreground", elderlyMode && "text-xl")}>
+      <div className="flex flex-col items-center gap-4 p-4 overflow-hidden">
+        <h2 className="text-lg font-bold">换三张</h2>
+        <p className="text-sm text-muted-foreground">
           请选择三张同花色的牌
         </p>
-        <MahjongHand
+        <CompactHand
           tiles={player.hand}
           selectedIds={selectedSwapTiles.map((t) => t.id)}
-          onSelect={handleSelectSwap}
-          size={elderlyMode ? "lg" : "md"}
+          onClickTile={handleSelectSwap}
         />
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           <Button
             onClick={handleConfirmSwap}
             disabled={selectedSwapTiles.length !== 3}
-            className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+            className="h-12 text-base px-6"
           >
             确认换牌
           </Button>
           <Button
             variant="outline"
             onClick={() => setSelectedSwapTiles([])}
-            className={cn("h-14 text-lg px-6", elderlyMode && "h-18 text-2xl px-8")}
+            className="h-12 text-base px-4"
           >
             重新选择
           </Button>
@@ -259,34 +397,29 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
   // 定缺阶段
   if (gameState.phase === "lacking") {
     return (
-      <div className="flex flex-col items-center gap-6 p-4">
-        <h2 className={cn("text-xl font-bold", elderlyMode && "text-3xl")}>
-          定缺
-        </h2>
-        <p className={cn("text-muted-foreground", elderlyMode && "text-xl")}>
+      <div className="flex flex-col items-center gap-4 p-4 overflow-hidden">
+        <h2 className="text-lg font-bold">定缺</h2>
+        <p className="text-sm text-muted-foreground">
           选择一门花色，必须打完该花色才能胡牌
         </p>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           {SUITS.map((suit) => (
             <Button
               key={suit}
               onClick={() => handleSetLack(suit)}
               variant={player.lack === suit ? "default" : "outline"}
-              className={cn(
-                "h-20 w-24 text-2xl font-bold",
-                elderlyMode && "h-24 w-32 text-3xl"
-              )}
+              className="h-16 w-20 text-xl font-bold"
             >
               {getSuitShortName(suit)}
             </Button>
           ))}
         </div>
         {player.lack && (
-          <p className={cn("text-lg text-primary font-semibold", elderlyMode && "text-2xl")}>
+          <p className="text-base text-primary font-semibold">
             你已选择定缺：{getSuitShortName(player.lack)}
           </p>
         )}
-        <p className={cn("text-sm text-muted-foreground", elderlyMode && "text-lg")}>
+        <p className="text-xs text-muted-foreground">
           等待其他玩家定缺...
         </p>
       </div>
@@ -296,34 +429,29 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
   // 游戏结束
   if (gameState.phase === "game_over") {
     return (
-      <div className="flex flex-col items-center gap-6 p-4">
-        <h2 className={cn("text-2xl font-bold", elderlyMode && "text-4xl")}>
-          游戏结束
-        </h2>
-        <div className="grid grid-cols-1 gap-3 w-full max-w-md">
+      <div className="flex flex-col items-center gap-4 p-4 overflow-hidden">
+        <h2 className="text-xl font-bold">游戏结束</h2>
+        <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
           {gameState.players.map((p, i) => (
             <div
               key={i}
               className={cn(
-                "flex items-center justify-between p-4 rounded-lg border",
+                "flex items-center justify-between p-3 rounded-lg border",
                 p.hasHu ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/20" : "border-border bg-card"
               )}
             >
-              <div className="flex items-center gap-3">
-                <span className={cn("text-lg font-bold", elderlyMode && "text-2xl")}>
-                  {p.name}
-                </span>
+              <div className="flex items-center gap-2">
+                <span className="text-base font-bold">{p.name}</span>
                 {p.hasHu && (
-                  <span className="text-sm text-yellow-600 dark:text-yellow-400 font-semibold">
+                  <span className="text-xs text-yellow-600 dark:text-yellow-400 font-semibold">
                     {p.isZimo ? "自摸" : "胡牌"}
                   </span>
                 )}
               </div>
               <span
                 className={cn(
-                  "text-xl font-bold",
-                  p.score > 0 ? "text-red-600" : p.score < 0 ? "text-green-600" : "text-muted-foreground",
-                  elderlyMode && "text-3xl"
+                  "text-lg font-bold",
+                  p.score > 0 ? "text-red-600" : p.score < 0 ? "text-green-600" : "text-muted-foreground"
                 )}
               >
                 {p.score > 0 ? `+${p.score}` : p.score}
@@ -331,7 +459,7 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
             </div>
           ))}
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           <Button
             onClick={() => {
               const state = createInitialState(rules ?? {
@@ -342,7 +470,7 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
               });
               setGameState(state);
             }}
-            className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+            className="h-12 text-base px-6"
           >
             再来一局
           </Button>
@@ -350,7 +478,7 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
             <Button
               variant="outline"
               onClick={onBack}
-              className={cn("h-14 text-lg px-6", elderlyMode && "h-18 text-2xl px-8")}
+              className="h-12 text-base px-4"
             >
               返回菜单
             </Button>
@@ -364,54 +492,52 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
   const isPlayerTurn = gameState.currentPlayer === 0 && gameState.phase === "playing";
   const isWaitingAction = gameState.phase === "waiting_action" && gameState.pendingAction?.player === 0;
 
+  // 是否有任何可操作按钮需要显示
+  const hasActionButtons =
+    (isPlayerTurn && gameState.lastDraw && selectedDiscard) ||
+    (isWaitingAction && (gameState.pendingAction?.type === "pong" || gameState.pendingAction?.type === "kong" || gameState.pendingAction?.type === "hu")) ||
+    (isPlayerTurn && (selfKong.anKong || selfKong.buKong));
+
   return (
-    <div className="flex flex-col h-full min-h-[600px] gap-2 p-2">
+    <div className="flex flex-col h-full overflow-hidden gap-1 px-1">
       {/* 顶部信息栏 */}
-      <div className="flex items-center justify-between px-2">
-        <div className={cn("text-sm text-muted-foreground", elderlyMode && "text-lg")}>
-          剩余牌: {gameState.wall.length}
+      <div className="shrink-0 flex items-center justify-between px-2 py-1">
+        <div className="text-xs text-muted-foreground">
+          剩余: {gameState.wall.length}
         </div>
-        <div className={cn("text-base font-semibold", elderlyMode && "text-xl")}>
+        <div className="text-sm font-semibold">
           {gameState.message}
         </div>
-        <div className={cn("text-sm text-muted-foreground", elderlyMode && "text-lg")}>
+        <div className="text-xs text-muted-foreground">
           得分: {player.score > 0 ? `+${player.score}` : player.score}
         </div>
       </div>
 
       {/* 上方玩家 (AI南，索引2) */}
-      <div className="flex flex-col items-center gap-1">
-        <span className={cn("text-xs", elderlyMode && "text-base")}>
+      <div className="shrink-0 flex flex-col items-center gap-0.5">
+        <span className="text-xs">
           {gameState.players[2].name}
-          {gameState.players[2].hasHu && " ✓"}
+          {gameState.players[2].hasHu && " OK"}
           {gameState.players[2].lack && ` [缺${getSuitShortName(gameState.players[2].lack)}]`}
         </span>
-        <div className="flex gap-0.5">
-          {Array.from({ length: gameState.players[2].hand.length }).map((_, i) => (
-            <MahjongTile key={i} faceDown size="sm" />
-          ))}
-        </div>
+        <OpponentTileBacks count={gameState.players[2].hand.length} variant="top" />
         <MahjongExposed melds={gameState.players[2].exposed} size="sm" />
       </div>
 
       {/* 中间区域 */}
-      <div className="flex-1 flex items-center justify-center gap-4 min-h-0">
+      <div className="flex-1 flex items-center justify-center gap-2 min-h-0 overflow-hidden">
         {/* 左侧玩家 (AI东，索引1) */}
-        <div className="flex flex-col items-center gap-1 w-20">
-          <span className={cn("text-xs", elderlyMode && "text-base")}>
+        <div className="shrink-0 flex flex-col items-center gap-0.5 w-14">
+          <span className="text-xs truncate w-full text-center">
             {gameState.players[1].name}
-            {gameState.players[1].hasHu && " ✓"}
+            {gameState.players[1].hasHu && " OK"}
           </span>
-          <div className="flex flex-col gap-0.5">
-            {Array.from({ length: gameState.players[1].hand.length }).map((_, i) => (
-              <MahjongTile key={i} faceDown size="sm" />
-            ))}
-          </div>
+          <OpponentTileBacks count={gameState.players[1].hand.length} variant="left" />
           <MahjongExposed melds={gameState.players[1].exposed} size="sm" />
         </div>
 
         {/* 中央：弃牌区 + 牌山 */}
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 min-h-0">
           <div className="relative">
             <MahjongDiscard discards={gameState.discardPile} size="sm" />
             {gameState.lastDiscard && (
@@ -420,16 +546,17 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
               </div>
             )}
           </div>
-          <div className="mt-4 flex items-center gap-2">
-            <div className="w-12 h-16 rounded-lg border-2 border-border bg-muted flex items-center justify-center">
-              <span className={cn("text-lg font-bold", elderlyMode && "text-2xl")}>
+          <div className="mt-2 flex items-center gap-2">
+            <div className="w-10 h-14 rounded-lg border-2 border-border bg-muted flex items-center justify-center">
+              <span className="text-sm font-bold">
                 {gameState.wall.length}
               </span>
             </div>
             {isPlayerTurn && !gameState.lastDraw && (
               <Button
                 onClick={handleDraw}
-                className={cn("h-14 text-lg px-6", elderlyMode && "h-18 text-2xl px-8")}
+                size="sm"
+                className="h-9 text-sm px-4"
               >
                 摸牌
               </Button>
@@ -438,45 +565,24 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
         </div>
 
         {/* 右侧玩家 (AI西，索引3) */}
-        <div className="flex flex-col items-center gap-1 w-20">
-          <span className={cn("text-xs", elderlyMode && "text-base")}>
+        <div className="shrink-0 flex flex-col items-center gap-0.5 w-14">
+          <span className="text-xs truncate w-full text-center">
             {gameState.players[3].name}
-            {gameState.players[3].hasHu && " ✓"}
+            {gameState.players[3].hasHu && " OK"}
           </span>
-          <div className="flex flex-col gap-0.5">
-            {Array.from({ length: gameState.players[3].hand.length }).map((_, i) => (
-              <MahjongTile key={i} faceDown size="sm" />
-            ))}
-          </div>
+          <OpponentTileBacks count={gameState.players[3].hand.length} variant="right" />
           <MahjongExposed melds={gameState.players[3].exposed} size="sm" />
         </div>
       </div>
 
-      {/* 玩家区域 */}
-      <div className="flex flex-col items-center gap-2">
-        {/* 碰杠牌 */}
-        {player.exposed.length > 0 && (
-          <MahjongExposed melds={player.exposed} size="md" />
-        )}
-
-        {/* 手牌 */}
-        <MahjongHand
-          tiles={player.hand}
-          selectedIds={selectedDiscard ? [selectedDiscard.id] : []}
-          onClickTile={(tile) => {
-            if (isPlayerTurn && gameState.lastDraw) {
-              setSelectedDiscard((prev) => (prev?.id === tile.id ? null : tile));
-            }
-          }}
-          size={elderlyMode ? "lg" : "md"}
-        />
-
-        {/* 操作按钮区 */}
-        <div className="flex flex-wrap gap-2 justify-center">
+      {/* 操作按钮区 - 固定在手牌上方，仅可操作时显示 */}
+      {hasActionButtons && (
+        <div className="shrink-0 flex flex-wrap gap-1.5 justify-center py-1">
           {isPlayerTurn && gameState.lastDraw && selectedDiscard && (
             <Button
               onClick={() => handleDiscard(selectedDiscard)}
-              className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+              size="sm"
+              className="h-9 text-sm px-4"
             >
               出牌
             </Button>
@@ -486,14 +592,16 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
             <>
               <Button
                 onClick={handlePong}
-                className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+                size="sm"
+                className="h-9 text-sm px-4"
               >
                 碰
               </Button>
               <Button
                 variant="outline"
                 onClick={handlePass}
-                className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+                size="sm"
+                className="h-9 text-sm px-4"
               >
                 过
               </Button>
@@ -504,14 +612,16 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
             <>
               <Button
                 onClick={handleKong}
-                className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+                size="sm"
+                className="h-9 text-sm px-4"
               >
                 杠
               </Button>
               <Button
                 variant="outline"
                 onClick={handlePass}
-                className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+                size="sm"
+                className="h-9 text-sm px-4"
               >
                 过
               </Button>
@@ -522,16 +632,18 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
             <>
               <Button
                 onClick={handleHu}
-                className={cn("h-14 text-lg px-8 bg-red-600 hover:bg-red-700", elderlyMode && "h-18 text-2xl px-10")}
+                size="sm"
+                className="h-9 text-sm px-4 bg-red-600 hover:bg-red-700"
               >
-                胡牌
+                胡
               </Button>
               <Button
                 variant="outline"
                 onClick={handlePass}
-                className={cn("h-14 text-lg px-8", elderlyMode && "h-18 text-2xl px-10")}
+                size="sm"
+                className="h-9 text-sm px-4"
               >
-                取消
+                过
               </Button>
             </>
           )}
@@ -539,7 +651,8 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
           {isPlayerTurn && selfKong.anKong && (
             <Button
               onClick={() => handleAnKong(selfKong.anKong!)}
-              className={cn("h-14 text-lg px-6", elderlyMode && "h-18 text-2xl px-8")}
+              size="sm"
+              className="h-9 text-sm px-3"
             >
               暗杠
             </Button>
@@ -548,39 +661,60 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
           {isPlayerTurn && selfKong.buKong && (
             <Button
               onClick={() => handleBuKong(selfKong.buKong!)}
-              className={cn("h-14 text-lg px-6", elderlyMode && "h-18 text-2xl px-8")}
+              size="sm"
+              className="h-9 text-sm px-3"
             >
               补杠
             </Button>
           )}
         </div>
+      )}
+
+      {/* 玩家区域：碰杠牌组 + 手牌 */}
+      <div className="shrink-0 flex flex-col items-center gap-1 pb-1">
+        {/* 碰杠牌 - 单独排列在手牌左侧 */}
+        {player.exposed.length > 0 && (
+          <MahjongExposed melds={player.exposed} size="sm" />
+        )}
+
+        {/* 手牌 - 紧凑重叠排列 */}
+        <CompactHand
+          tiles={player.hand}
+          selectedIds={selectedDiscard ? [selectedDiscard.id] : []}
+          onClickTile={(tile) => {
+            if (isPlayerTurn && gameState.lastDraw) {
+              setSelectedDiscard((prev) => (prev?.id === tile.id ? null : tile));
+            }
+          }}
+          lastDrawId={gameState.lastDraw?.id}
+        />
       </div>
 
       {/* 胡牌提示弹窗 */}
       <Dialog open={showHuDialog} onOpenChange={setShowHuDialog}>
-        <DialogContent className={cn("max-w-sm", elderlyMode && "max-w-md")}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className={cn("text-xl", elderlyMode && "text-3xl")}>
+            <DialogTitle className="text-lg">
               可以胡牌！
             </DialogTitle>
-            <DialogDescription className={cn("text-base", elderlyMode && "text-xl")}>
+            <DialogDescription className="text-sm">
               {huInfo?.isZimo ? "自摸胡牌" : "点炮胡牌"}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-center py-4">
+          <div className="flex justify-center py-3">
             {huInfo?.tile && <MahjongTile tile={huInfo.tile} size="lg" />}
           </div>
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-3 justify-center">
             <Button
               onClick={handleHu}
-              className={cn("h-16 text-xl px-10 bg-red-600 hover:bg-red-700", elderlyMode && "h-20 text-2xl px-12")}
+              className="h-12 text-base px-8 bg-red-600 hover:bg-red-700"
             >
               胡牌
             </Button>
             <Button
               variant="outline"
               onClick={handlePass}
-              className={cn("h-16 text-xl px-10", elderlyMode && "h-20 text-2xl px-12")}
+              className="h-12 text-base px-8"
             >
               取消
             </Button>
