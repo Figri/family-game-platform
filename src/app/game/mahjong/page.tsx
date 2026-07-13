@@ -1,13 +1,14 @@
 "use client";
 
 import { Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { SichuanMahjongGame } from "@/components/games/sichuan-mahjong-game";
 import { type GameRules, DEFAULT_RULES } from "@/lib/games/sichuan-mahjong";
 
 function MahjongGameContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const mode = searchParams.get("mode") || "pve";
+  const backUrl = "/family-game-platform/game/mahjong/select";
 
   // 从URL参数解析规则
   const rules: GameRules = {
@@ -30,7 +31,7 @@ function MahjongGameContent() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/game/mahjong/menu")}
+            onClick={() => { window.location.href = backUrl; }}
             className="text-2xl hover:scale-110 transition-transform"
             aria-label="返回菜单"
           >
@@ -41,7 +42,7 @@ function MahjongGameContent() {
               四川麻将
             </h1>
             <span className="text-xs text-muted-foreground elderly-mode:text-base">
-              单机模式
+              {mode === "room" ? "👥 好友房" : "🤖 人机对战"}
             </span>
           </div>
         </div>
@@ -51,7 +52,7 @@ function MahjongGameContent() {
       <main className="flex-1 flex items-start justify-center overflow-auto">
         <SichuanMahjongGame
           rules={rules}
-          onBack={() => router.push("/game/mahjong/menu")}
+          onBack={() => { window.location.href = backUrl; }}
         />
       </main>
 

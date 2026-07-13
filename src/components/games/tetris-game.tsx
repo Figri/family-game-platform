@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   type TetrisGameState,
   type GameMode,
@@ -23,7 +22,7 @@ import {
 } from "@/lib/games/tetris";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useElderlyMode } from "@/lib/elderly-mode";
+
 
 interface TetrisGameProps {
   mode: GameMode;
@@ -263,8 +262,7 @@ function PlayerBoard({
 }
 
 export function TetrisGame({ mode }: TetrisGameProps) {
-  const router = useRouter();
-  const { enabled: elderlyMode } = useElderlyMode();
+  const elderlyMode = false;
   const stateRef = useRef<TetrisGameState>(createInitialState(mode));
   const [renderTick, setRenderTick] = useState(0);
   const animFrameRef = useRef<number | null>(null);
@@ -530,7 +528,7 @@ export function TetrisGame({ mode }: TetrisGameProps) {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => router.push("/game/tetris/menu")}
+                    onClick={() => { window.location.href = "/family-game-platform/game/tetris/menu"; }}
                     className={cn(
                       "h-14 px-6 text-xl font-semibold",
                       "elderly-mode:h-16 elderly-mode:text-2xl"

@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { useElderlyMode } from "@/lib/elderly-mode";
+
 import { type Tile, type Suit, getSuitShortName } from "@/lib/games/mahjong";
 import {
   type GameState,
@@ -52,7 +52,7 @@ export function SichuanMahjongGame({ rules, onBack }: SichuanMahjongGameProps) {
   const [selectedDiscard, setSelectedDiscard] = useState<Tile | null>(null);
   const [showHuDialog, setShowHuDialog] = useState(false);
   const [huInfo, setHuInfo] = useState<{ isZimo: boolean; tile: Tile } | null>(null);
-  const { enabled: elderlyMode } = useElderlyMode();
+  const elderlyMode = false;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 初始化游戏

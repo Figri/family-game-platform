@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   type GameState,
@@ -34,7 +33,6 @@ interface GomokuBoardProps {
 const BOARD_SIZE = 15;
 
 export function GomokuBoard({ mode }: GomokuBoardProps) {
-  const router = useRouter();
   const [state, setState] = useState<GameState>(() => createInitialState(mode));
   const [showDrawDialog, setShowDrawDialog] = useState(false);
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false);
@@ -302,7 +300,7 @@ export function GomokuBoard({ mode }: GomokuBoardProps) {
 
       <Button
         variant="ghost"
-        onClick={() => router.push("/game/gomoku/menu")}
+        onClick={() => { window.location.href = "/family-game-platform/game/gomoku/menu"; }}
         className="h-14 text-lg elderly-mode:h-16 elderly-mode:text-xl"
       >
         ← 返回菜单

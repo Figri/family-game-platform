@@ -1,163 +1,202 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type RoomStatus = "waiting" | "playing" | "finished";
-
 export interface Player {
   id: string;
-  nickname: string;
-  avatarId: string;
+  name: string;
+  avatar: string;
   isAI: boolean;
-  isHost: boolean;
   isOnline: boolean;
-  /** \u662F\u5426\u88AB\u6258\u7BA1\u7ED9AI */
-  isAIManaged: boolean;
+  isHost: boolean;
 }
 
 export interface Room {
-  /** 6\u4F4D\u6570\u5B57\u623F\u53F7 */
   roomCode: string;
-  /** \u623F\u95F4\u72B6\u6001 */
-  status: RoomStatus;
-  /** \u6E38\u620F\u7C7B\u578B */
-  gameType: string;
-  /** \u73A9\u5BB6\u5217\u8868 */
-  players: Player[];
-  /** \u6700\u5927\u73A9\u5BB6\u6570 */
-  maxPlayers: number;
-  /** AI\u8865\u4F4D\u5F00\u5173 */
-  aiFillEnabled: boolean;
-  /** \u623F\u4E3BID */
+  gameId: string;
   hostId: string;
-  /** \u521B\u5EFA\u65F6\u95F4 */
-  createdAt: number;
+  players: Player[];
+  maxPlayers: number;
+  status: "waiting" | "playing";
 }
 
-interface RoomState {
-  /** \u5F53\u524D\u623F\u95F4 */
-  currentRoom: Room | null;
-  /** \u751F\u62106\u4F4D\u623F\u53F7 */
-  generateRoomCode: () => string;
-  /** \u521B\u5EFA\u623F\u95F4 */
-  createRoom: (gameType: string, hostPlayer: Player, maxPlayers: number) => Room;
-  /** \u52A0\u5165\u623F\u95F4 */
-  joinRoom: (roomCode: string, player: Player) => boolean;
-  /** \u79BB\u5F00\u623F\u95F4 */
-  leaveRoom: (playerId: string) => void;
-  /** \u8BBE\u7F6EAI\u8865\u4F4D */
-  setAIFill: (enabled: boolean) => void;
-  /** \u5207\u6362\u73A9\u5BB6\u5728\u7EBF\u72B6\u6001 */
-  setPlayerOnline: (playerId: string, online: boolean) => void;
-  /** \u8BBE\u7F6E\u73A9\u5BB6\u6258\u7BA1 */
-  setPlayerAIManaged: (playerId: string, managed: boolean) => void;
-  /** \u6E05\u9664\u623F\u95F4 */
-  clearRoom: () => void;
-}
+/** AI 头像池 */
+const AI_AVATARS = ["🤖", "🦊", "🐼", "🐰", "🦁", "🐯", "🐨", "🦄", "🐸", "🐵"];
+/** AI 名字池 */
+const AI_NAMES = [
+  "小智同学",
+  "聪明豆",
+  "欢乐熊",
+  "机智猫",
+  "快乐虎",
+  "智慧龙",
+  "灵巧猴",
+  "勇敢兔",
+  "淡定龟",
+  "活泼鱼",
+];
 
 function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-export const useRoomStore = create<RoomState>()((set, get) => ({
-  currentRoom: null,
+function generateAIPlayer(index: number): Player {
+  return {
+    id: `ai-${Date.now()}-${index}`,
+    name: AI_NAMES[index % AI_NAMES.length],
+    avatar: AI_AVATARS[index % AI_AVATARS.length],
+    isAI: true,
+    isOnline: true,
+    isHost: false,
+  };
+}
 
-  generateRoomCode: () => generateCode(),
+/** 根据游戏ID解析最大玩家数 */
+function parseMaxPlayers(playersStr: string): number {
+  const match = playersStr.match(/(\d+)/g);
+  if (!match) return 4;
+  return Math.max(...match.map(Number));
+}
 
-  createRoom: (gameType, hostPlayer, maxPlayers) => {
-    const roomCode = generateCode();
-    const room: Room = {
-      roomCode,
-      status: "waiting",
-      gameType,
-      players: [hostPlayer],
-      maxPlayers,
-      aiFillEnabled: false,
-      hostId: hostPlayer.id,
-      createdAt: Date.now(),
-    };
-    set({ currentRoom: room });
-    return room;
-  },
+interface RoomState {
+  currentRoom: Room | null;
+  createRoom: (gameId: string, playerName: string, playerAvatar: string, playerId: string, maxPlayers: number) => Room;
+  joinRoom: (roomCode: string, playerName: string, playerAvatar: string, playerId: string) => boolean;
+  addAIPlayers: () => void;
+  startGame: () => boolean;
+  playerDisconnect: (playerId: string) => void;
+  playerReconnect: (playerId: string) => void;
+  clearRoom: () => void;
+}
 
-  joinRoom: (roomCode, player) => {
-    const { currentRoom } = get();
-    if (!currentRoom || currentRoom.roomCode !== roomCode) return false;
-    if (currentRoom.players.length >= currentRoom.maxPlayers) return false;
-    if (currentRoom.status !== "waiting") return false;
-    if (currentRoom.players.some((p) => p.id === player.id)) return false;
+export const useRoomStore = create<RoomState>()(
+  persist(
+    (set, get) => ({
+      currentRoom: null,
 
-    set({
-      currentRoom: {
-        ...currentRoom,
-        players: [...currentRoom.players, player],
+      createRoom: (gameId, playerName, playerAvatar, playerId, maxPlayers) => {
+        const roomCode = generateCode();
+        const hostPlayer: Player = {
+          id: playerId,
+          name: playerName,
+          avatar: playerAvatar,
+          isAI: false,
+          isOnline: true,
+          isHost: true,
+        };
+        const room: Room = {
+          roomCode,
+          gameId,
+          hostId: playerId,
+          players: [hostPlayer],
+          maxPlayers,
+          status: "waiting",
+        };
+        set({ currentRoom: room });
+        return room;
       },
-    });
-    return true;
-  },
 
-  leaveRoom: (playerId) => {
-    const { currentRoom } = get();
-    if (!currentRoom) return;
+      joinRoom: (roomCode, playerName, playerAvatar, playerId) => {
+        const { currentRoom } = get();
+        if (!currentRoom) return false;
+        if (currentRoom.roomCode !== roomCode) return false;
+        if (currentRoom.players.length >= currentRoom.maxPlayers) return false;
+        if (currentRoom.status !== "waiting") return false;
+        if (currentRoom.players.some((p) => p.id === playerId)) return false;
 
-    const remaining = currentRoom.players.filter((p) => p.id !== playerId);
+        const newPlayer: Player = {
+          id: playerId,
+          name: playerName,
+          avatar: playerAvatar,
+          isAI: false,
+          isOnline: true,
+          isHost: false,
+        };
 
-    if (remaining.length === 0) {
-      set({ currentRoom: null });
-      return;
+        set({
+          currentRoom: {
+            ...currentRoom,
+            players: [...currentRoom.players, newPlayer],
+          },
+        });
+        return true;
+      },
+
+      addAIPlayers: () => {
+        const { currentRoom } = get();
+        if (!currentRoom) return;
+
+        const currentCount = currentRoom.players.length;
+        const need = currentRoom.maxPlayers - currentCount;
+        if (need <= 0) return;
+
+        const aiPlayers: Player[] = [];
+        for (let i = 0; i < need; i++) {
+          aiPlayers.push(generateAIPlayer(currentCount + i));
+        }
+
+        set({
+          currentRoom: {
+            ...currentRoom,
+            players: [...currentRoom.players, ...aiPlayers],
+          },
+        });
+      },
+
+      startGame: () => {
+        const { currentRoom, addAIPlayers } = get();
+        if (!currentRoom) return false;
+        if (currentRoom.hostId !== currentRoom.players.find((p) => !p.isAI)?.id) {
+          return false;
+        }
+
+        // 自动补AI
+        addAIPlayers();
+
+        // 更新状态为 playing
+        const room = get().currentRoom;
+        if (!room) return false;
+
+        set({
+          currentRoom: {
+            ...room,
+            status: "playing",
+          },
+        });
+        return true;
+      },
+
+      playerDisconnect: (playerId) => {
+        const { currentRoom } = get();
+        if (!currentRoom) return;
+
+        set({
+          currentRoom: {
+            ...currentRoom,
+            players: currentRoom.players.map((p) =>
+              p.id === playerId ? { ...p, isOnline: false } : p
+            ),
+          },
+        });
+      },
+
+      playerReconnect: (playerId) => {
+        const { currentRoom } = get();
+        if (!currentRoom) return;
+
+        set({
+          currentRoom: {
+            ...currentRoom,
+            players: currentRoom.players.map((p) =>
+              p.id === playerId ? { ...p, isOnline: true } : p
+            ),
+          },
+        });
+      },
+
+      clearRoom: () => set({ currentRoom: null }),
+    }),
+    {
+      name: "family-game-room",
     }
-
-    // \u5982\u679C\u623F\u4E3B\u79BB\u5F00\uFF0C\u8F6C\u8BA9\u623F\u4E3B
-    const newHostId =
-      currentRoom.hostId === playerId ? remaining[0].id : currentRoom.hostId;
-
-    set({
-      currentRoom: {
-        ...currentRoom,
-        players: remaining.map((p) => ({
-          ...p,
-          isHost: p.id === newHostId,
-        })),
-        hostId: newHostId,
-      },
-    });
-  },
-
-  setAIFill: (enabled) => {
-    const { currentRoom } = get();
-    if (!currentRoom) return;
-    set({
-      currentRoom: {
-        ...currentRoom,
-        aiFillEnabled: enabled,
-      },
-    });
-  },
-
-  setPlayerOnline: (playerId, online) => {
-    const { currentRoom } = get();
-    if (!currentRoom) return;
-    set({
-      currentRoom: {
-        ...currentRoom,
-        players: currentRoom.players.map((p) =>
-          p.id === playerId ? { ...p, isOnline: online } : p
-        ),
-      },
-    });
-  },
-
-  setPlayerAIManaged: (playerId, managed) => {
-    const { currentRoom } = get();
-    if (!currentRoom) return;
-    set({
-      currentRoom: {
-        ...currentRoom,
-        players: currentRoom.players.map((p) =>
-          p.id === playerId ? { ...p, isAIManaged: managed } : p
-        ),
-      },
-    });
-  },
-
-  clearRoom: () => set({ currentRoom: null }),
-}));
+  )
+);

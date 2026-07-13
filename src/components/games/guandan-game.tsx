@@ -27,7 +27,7 @@ import {
   type RankDisplay,
 } from "@/lib/games/guandan";
 import { PokerCard as PokerCardComponent, PokerCardBack } from "./poker-card";
-import { useElderlyMode } from "@/lib/elderly-mode";
+
 
 interface GuandanGameProps {
   onBack?: () => void;
@@ -39,7 +39,7 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
   const [message, setMessage] = useState<string>("");
   const [showResult, setShowResult] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { enabled: elderlyMode } = useElderlyMode();
+  const elderlyMode = false;
 
   // 清除定时器
   useEffect(() => {

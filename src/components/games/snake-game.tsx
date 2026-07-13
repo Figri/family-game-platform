@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   type SnakeGameState,
   type GameMode,
@@ -17,7 +16,7 @@ import {
 } from "@/lib/games/snake";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useElderlyMode } from "@/lib/elderly-mode";
+
 
 interface SnakeGameProps {
   mode: GameMode;
@@ -97,8 +96,7 @@ function drawGame(ctx: CanvasRenderingContext2D, state: SnakeGameState, elderlyM
 }
 
 export function SnakeGame({ mode }: SnakeGameProps) {
-  const router = useRouter();
-  const { enabled: elderlyMode } = useElderlyMode();
+  const elderlyMode = false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<SnakeGameState>(createInitialState(mode));
   const [renderTick, setRenderTick] = useState(0);
@@ -384,7 +382,7 @@ export function SnakeGame({ mode }: SnakeGameProps) {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => router.push("/game/snake/menu")}
+                    onClick={() => { window.location.href = "/family-game-platform/game/snake/menu"; }}
                     className={cn(
                       "h-14 px-6 text-xl font-semibold bg-white/90",
                       "elderly-mode:h-16 elderly-mode:text-2xl"

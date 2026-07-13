@@ -1,18 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useElderlyMode } from "@/lib/elderly-mode";
+
 import { type GameRules, DEFAULT_RULES } from "@/lib/games/sichuan-mahjong";
 
 export default function MahjongMenuPage() {
-  const router = useRouter();
-  const { enabled: elderlyMode } = useElderlyMode();
+  const elderlyMode = false;
   const [rules, setRules] = useState<GameRules>(DEFAULT_RULES);
   const [showRules, setShowRules] = useState(false);
 
@@ -25,7 +23,7 @@ export default function MahjongMenuPage() {
     (Object.keys(rules) as Array<keyof GameRules>).forEach((key) => {
       params.set(key, String(rules[key]));
     });
-    router.push(`/game/mahjong?${params.toString()}`);
+    window.location.href = `/family-game-platform/game/mahjong?${params.toString()}`;
   };
 
   return (
@@ -34,7 +32,7 @@ export default function MahjongMenuPage() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/")}
+            onClick={() => { window.location.href = "/family-game-platform/"; }}
             className="text-2xl hover:scale-110 transition-transform"
             aria-label="返回首页"
           >
@@ -173,7 +171,7 @@ export default function MahjongMenuPage() {
 
             <Button
               variant="ghost"
-              onClick={() => router.push("/")}
+              onClick={() => { window.location.href = "/family-game-platform/"; }}
               className={cn(
                 "w-full h-14 text-lg gap-2",
                 elderlyMode && "h-16 text-xl"

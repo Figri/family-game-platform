@@ -1,11 +1,13 @@
 "use client";
 
 import { Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { DoudizhuGame } from "@/components/games/doudizhu-game";
 
 function DoudizhuGameContent() {
-  const router = useRouter();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get("mode") || "pve";
+  const backUrl = "/family-game-platform/game/doudizhu/select";
 
   return (
     <div className="flex flex-col min-h-full bg-background">
@@ -13,7 +15,7 @@ function DoudizhuGameContent() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/game/doudizhu/menu")}
+            onClick={() => { window.location.href = backUrl; }}
             className="text-2xl hover:scale-110 transition-transform"
             aria-label="返回菜单"
           >
@@ -24,7 +26,7 @@ function DoudizhuGameContent() {
               斗地主
             </h1>
             <span className="text-xs text-muted-foreground elderly-mode:text-base">
-              单机模式
+              {mode === "room" ? "👥 好友房" : "🤖 人机对战"}
             </span>
           </div>
         </div>
@@ -32,7 +34,7 @@ function DoudizhuGameContent() {
 
       {/* Game Board */}
       <main className="flex-1 flex items-start justify-center">
-        <DoudizhuGame onBack={() => router.push("/game/doudizhu/menu")} />
+        <DoudizhuGame onBack={() => { window.location.href = backUrl; }} />
       </main>
 
       {/* Footer */}

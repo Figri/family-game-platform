@@ -2,16 +2,15 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
 import { GomokuBoard } from "@/components/games/gomoku-board";
 import { type GameMode } from "@/lib/games/gomoku";
 import { cn } from "@/lib/utils";
 
 function GomokuGameContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const modeParam = searchParams.get("mode");
-  const mode: GameMode = modeParam === "pve" ? "pve" : "pvp";
+  const mode: GameMode = modeParam === "pve" || modeParam === "room" ? "pve" : "pvp";
+  const backUrl = "/family-game-platform/game/gomoku/select";
 
   return (
     <div className="flex flex-col min-h-full bg-background">
@@ -19,7 +18,7 @@ function GomokuGameContent() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/game/gomoku/menu")}
+            onClick={() => { window.location.href = backUrl; }}
             className="text-2xl hover:scale-110 transition-transform"
             aria-label="返回菜单"
           >
@@ -30,7 +29,7 @@ function GomokuGameContent() {
               五子棋
             </h1>
             <span className="text-xs text-muted-foreground elderly-mode:text-base">
-              {mode === "pve" ? "🤖 人机对战" : "👥 双人对战"}
+              {modeParam === "room" ? "👥 好友房" : mode === "pve" ? "🤖 人机对战" : "👥 双人对战"}
             </span>
           </div>
         </div>

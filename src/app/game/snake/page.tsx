@@ -2,16 +2,15 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
 import { SnakeGame } from "@/components/games/snake-game";
 import { type GameMode } from "@/lib/games/snake";
 import { cn } from "@/lib/utils";
 
 function SnakeGameContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const modeParam = searchParams.get("mode");
   const mode: GameMode = modeParam === "duo" ? "duo" : "single";
+  const backUrl = "/family-game-platform/game/snake/select";
 
   return (
     <div className="flex flex-col min-h-full bg-background">
@@ -19,7 +18,7 @@ function SnakeGameContent() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/game/snake/menu")}
+            onClick={() => { window.location.href = backUrl; }}
             className="text-2xl hover:scale-110 transition-transform"
             aria-label="返回菜单"
           >

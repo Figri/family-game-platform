@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  turbopack: {
-    root: "/workspace/family-game-platform",
-  },
 };
 
 export default nextConfig;

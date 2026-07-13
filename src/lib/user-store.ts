@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 /** 默认头像列表 */
 export const DEFAULT_AVATARS = [
@@ -17,25 +17,44 @@ export const DEFAULT_AVATARS = [
   { id: "whale", emoji: "🐋", label: "🐋 鲸鱼" },
 ];
 
-/** 生成游客ID */
+/** 生成游客ID：玩家 + 4位数字 */
 function generateGuestId(): string {
   const num = Math.floor(1000 + Math.random() * 9000);
   return `玩家${num}`;
 }
 
+export interface RecentGame {
+  gameId: string;
+  timestamp: number;
+}
+
 interface UserState {
   /** 游客ID，不可修改 */
   guestId: string;
-  /** 昵称，可修改 */
+  /** 昵称，可修改（1-12字符） */
   nickname: string;
   /** 头像ID */
   avatarId: string;
+  /** 最近游戏记录 */
+  recentGames: RecentGame[];
+  /** 音效开关（默认开） */
+  soundEnabled: boolean;
+  /** 背景音乐开关（默认关） */
+  bgmEnabled: boolean;
+  /** 是否已从 localStorage 恢复 */
+  _hydrated: boolean;
   /** 修改昵称 */
   setNickname: (name: string) => void;
   /** 选择头像 */
   setAvatar: (avatarId: string) => void;
   /** 获取头像emoji */
   getAvatarEmoji: () => string;
+  /** 添加最近游戏记录 */
+  addRecentGame: (gameId: string) => void;
+  /** 设置音效开关 */
+  setSoundEnabled: (enabled: boolean) => void;
+  /** 设置背景音乐开关 */
+  setBgmEnabled: (enabled: boolean) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -44,16 +63,50 @@ export const useUserStore = create<UserState>()(
       guestId: generateGuestId(),
       nickname: "",
       avatarId: "cat",
-      setNickname: (name) => set({ nickname: name }),
+      recentGames: [],
+      soundEnabled: true,
+      bgmEnabled: false,
+      _hydrated: false,
+      setNickname: (name) => {
+        const trimmed = name.trim();
+        if (trimmed.length >= 1 && trimmed.length <= 12) {
+          set({ nickname: trimmed });
+        }
+      },
       setAvatar: (avatarId) => set({ avatarId }),
       getAvatarEmoji: () => {
         const { avatarId } = get();
         const found = DEFAULT_AVATARS.find((a) => a.id === avatarId);
         return found ? found.emoji : "👤";
       },
+      addRecentGame: (gameId) =>
+        set((state) => {
+          const filtered = state.recentGames.filter(
+            (g) => g.gameId !== gameId
+          );
+          return {
+            recentGames: [
+              { gameId, timestamp: Date.now() },
+              ...filtered,
+            ].slice(0, 10),
+          };
+        }),
+      setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
+      setBgmEnabled: (enabled) => set({ bgmEnabled: enabled }),
     }),
     {
       name: "family-game-user",
+      storage: createJSONStorage(() => {
+        if (typeof window !== "undefined") return localStorage;
+        return {
+          getItem: () => null,
+          setItem: () => {},
+          removeItem: () => {},
+        };
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) state._hydrated = true;
+      },
     }
   )
 );

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +8,6 @@ import { getHighScore } from "@/lib/games/tetris";
 import { useEffect, useState } from "react";
 
 export default function TetrisMenuPage() {
-  const router = useRouter();
   const [highScore, setHighScore] = useState(0);
 
   useEffect(() => {
@@ -22,7 +20,7 @@ export default function TetrisMenuPage() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/")}
+            onClick={() => { window.location.href = "/family-game-platform/"; }}
             className="text-2xl hover:scale-110 transition-transform"
             aria-label="返回首页"
           >
@@ -55,7 +53,7 @@ export default function TetrisMenuPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Button
-              onClick={() => router.push("/game/tetris?mode=single")}
+              onClick={() => { window.location.href = "/family-game-platform/game/tetris?mode=single"; }}
               className={cn(
                 "w-full h-16 text-xl font-semibold gap-3",
                 "elderly-mode:h-20 elderly-mode:text-2xl"
@@ -66,7 +64,7 @@ export default function TetrisMenuPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => router.push("/game/tetris?mode=duo")}
+              onClick={() => { window.location.href = "/family-game-platform/game/tetris?mode=duo"; }}
               className={cn(
                 "w-full h-16 text-xl font-semibold gap-3",
                 "elderly-mode:h-20 elderly-mode:text-2xl"
@@ -77,7 +75,7 @@ export default function TetrisMenuPage() {
             </Button>
             <Button
               variant="ghost"
-              onClick={() => router.push("/")}
+              onClick={() => { window.location.href = "/family-game-platform/"; }}
               className={cn(
                 "w-full h-14 text-lg gap-2",
                 "elderly-mode:h-16 elderly-mode:text-xl"

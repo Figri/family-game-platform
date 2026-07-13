@@ -1,63 +1,84 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
-
-export interface GameCardData {
-  id: string;
-  name: string;
-  emoji: string;
-  description: string;
-  href: string;
-}
 
 interface GameCardProps {
-  game: GameCardData;
+  name: string;
+  emoji: string;
+  desc: string;
+  players: string;
+  color: string;
+  onClick: () => void;
 }
 
-export function GameCard({ game }: GameCardProps) {
-  const router = useRouter();
+export function GameCard({
+  name,
+  emoji,
+  desc,
+  players,
+  color,
+  onClick,
+}: GameCardProps) {
+  const isGradient = color.startsWith("linear");
 
   return (
-    <button
-      onClick={() => router.push(game.href)}
-      className={cn(
-        "group flex flex-col items-center justify-center gap-3 rounded-2xl",
-        "bg-card border border-border p-4 text-center",
-        "transition-all duration-200",
-        "hover:scale-[1.03] hover:shadow-lg hover:border-primary/30",
-        "active:scale-[0.98]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        "elderly-mode:h-[220px] elderly-mode:gap-4 elderly-mode:p-6"
-      )}
-      style={{ minHeight: "180px" }}
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="group flex flex-col items-stretch rounded-2xl overflow-hidden bg-white shadow-md hover:shadow-xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 cursor-pointer select-none"
     >
-      <span
-        className={cn(
-          "text-5xl leading-none transition-transform duration-200 group-hover:scale-110",
-          "elderly-mode:text-7xl"
-        )}
-        role="img"
-        aria-label={game.name}
-      >
-        {game.emoji}
-      </span>
-      <h3
-        className={cn(
-          "text-lg font-semibold text-foreground",
-          "elderly-mode:text-2xl"
-        )}
-      >
-        {game.name}
-      </h3>
-      <p
-        className={cn(
-          "text-sm text-muted-foreground line-clamp-2",
-          "elderly-mode:text-lg"
-        )}
-      >
-        {game.description}
-      </p>
-    </button>
+      {/* 主题色顶部 */}
+      <div
+        className="h-3 w-full"
+        style={isGradient ? { background: color } : { backgroundColor: color }}
+      />
+      <div className="p-4 flex flex-col items-center gap-2">
+        {/* emoji 图标 */}
+        <span
+          className="text-5xl leading-none transition-transform duration-200 group-hover:scale-110"
+          role="img"
+          aria-label={name}
+        >
+          {emoji}
+        </span>
+        {/* 游戏名 */}
+        <span className="text-xl font-bold text-[#3D2C1E]">{name}</span>
+        {/* 说明 */}
+        <span className="text-base text-[#8B7355] text-center leading-snug">
+          {desc}
+        </span>
+        {/* 人数标签 */}
+        <span
+          className={cn(
+            "inline-block px-3 py-1 rounded-full text-sm font-medium text-white"
+          )}
+          style={
+            isGradient
+              ? { backgroundColor: "#F97316" }
+              : { backgroundColor: color }
+          }
+        >
+          {players}
+        </span>
+        {/* 去玩按钮 */}
+        <span
+          className="mt-1 w-full text-center py-3 rounded-xl font-semibold text-white text-lg transition-opacity group-hover:opacity-90"
+          style={
+            isGradient
+              ? { backgroundColor: "#F97316" }
+              : { backgroundColor: color }
+          }
+        >
+          去玩
+        </span>
+      </div>
+    </div>
   );
 }
