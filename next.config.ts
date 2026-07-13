@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  turbopack: {
-    root: "/workspace/family-game-platform",
+  output: 'export',
+  images: {
+    unoptimized: true,
   },
 };
 
