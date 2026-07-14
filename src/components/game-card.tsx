@@ -49,9 +49,9 @@ export function GameCard({
           {emoji}
         </span>
         {/* 游戏名 */}
-        <span className="text-xl font-bold text-[#3D2C1E]">{name}</span>
+        <span className="text-xl font-bold text-[#3D2C1E] whitespace-nowrap">{name}</span>
         {/* 说明 */}
-        <span className="text-base text-[#8B7355] text-center leading-snug">
+        <span className="text-base text-[#8B7355] text-center leading-snug whitespace-nowrap">
           {desc}
         </span>
         {/* 人数标签 */}
