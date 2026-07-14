@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[28643,["/family-game-platform/_next/static/chunks/176c_5y39689t.js","/family-game-platform/_next/static/chunks/158myu8e_yme3.js","/family-game-platform/_next/static/chunks/3h1z1gcnlt2ce.js"],"GameSelectClient"]
+3:I[97367,["/family-game-platform/_next/static/chunks/176c_5y39689t.js","/family-game-platform/_next/static/chunks/158myu8e_yme3.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"gameId":"mahjong"}],[["$","script","script-0",{"src":"/family-game-platform/_next/static/chunks/3h1z1gcnlt2ce.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"BdPx4AlGFBmmImivGkeYL"}
+5:null

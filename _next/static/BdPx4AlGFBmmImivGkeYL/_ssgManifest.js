@@ -1,0 +1,1 @@
+self.__SSG_MANIFEST=new Set(["\u002Fgame\u002F[gameId]\u002Fplay","\u002Fgame\u002F[gameId]\u002Froom","\u002Fgame\u002F[gameId]\u002Fselect","\u002Fgame\u002F[gameId]\u002Fwait"]);self.__SSG_MANIFEST_CB&&self.__SSG_MANIFEST_CB()
