@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
   type PokerCard,
   type HandPattern,
   detectHandPattern,
   canPlayBeat,
   suggestPlay,
+  isRedSuit,
+  RANK_DISPLAY,
 } from "@/lib/games/poker";
 import {
   type DoudizhuState,
@@ -23,6 +24,7 @@ import {
   getPlayerName,
 } from "@/lib/games/doudizhu";
 import { PokerCard as PokerCardComponent } from "./poker-card";
+import { GameResultModal } from "@/components/game-result-modal";
 
 interface DoudizhuGameProps {
   onBack?: () => void;
@@ -41,10 +43,8 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
 
   // 观测容器宽度 + 计算实际 clamp 牌宽
   const { handContainerWidth, cardWidth } = useMemo(() => {
-    // clamp(42px, 8vw, 72px) => 实际 8vw 需要 viewport 宽度
-    // 用容器宽度近似：8% of window width
-    const vwWidth = Math.round(containerWidth / 0.9); // 近似 viewport 宽度
-    const clampedCardWidth = Math.min(72, Math.max(42, Math.round(vwWidth * 0.08)));
+    // 牌宽 clamp(48px, 10vw, 72px)
+    const clampedCardWidth = Math.min(72, Math.max(48, Math.round(containerWidth * 0.10)));
     return {
       handContainerWidth: containerWidth,
       cardWidth: clampedCardWidth,
@@ -79,7 +79,7 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
         setMessage(
           `${getPlayerName(state.currentPlayer, true)} ${action === "call" ? "叫地主" : "不叫"}`
         );
-      }, 1000);
+      }, 2000);
     } else if (
       state.phase === "playing" &&
       state.players[state.currentPlayer].isAI
@@ -100,7 +100,7 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
           }
           return newState;
         });
-      }, elderlyMode ? 2000 : 1200);
+      }, 2500);
     } else if (state.phase === "finished" && !showResult) {
       timerRef.current = setTimeout(() => {
         setShowResult(true);
@@ -191,6 +191,30 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
   const isPlayerTurn =
     state.phase === "playing" && state.currentPlayer === 0 && !state.players[0].isAI;
 
+  // 胜负结果
+  const gameResult = useMemo(() => {
+    if (state.phase !== "finished" || state.winner === null) return null;
+    const playerIsLandlord = state.landlord === 0;
+    const landlordWon = state.winner === state.landlord;
+    if (playerIsLandlord) {
+      return landlordWon ? "win" : "lose";
+    } else {
+      return landlordWon ? "lose" : "win";
+    }
+  }, [state.phase, state.winner, state.landlord]);
+
+  const resultMessage = useMemo(() => {
+    if (state.phase !== "finished") return undefined;
+    const parts: string[] = [];
+    if (state.spring) parts.push("春天！");
+    if (state.antiSpring) parts.push("反春！");
+    if (state.scores) {
+      const myScore = state.landlord === 0 ? state.scores.landlord : state.scores.peasant1;
+      parts.push(`得分 ${myScore > 0 ? "+" : ""}${myScore}`);
+    }
+    return parts.join(" ") || undefined;
+  }, [state]);
+
   // ========== 手牌重叠布局计算 ==========
   const handCards = state.players[0].hand;
   const cardCount = handCards.length;
@@ -205,7 +229,7 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
     if (naturalWidth > availableWidth) {
       step = (availableWidth - cardWidth) / (cardCount - 1);
     }
-    return Math.max(step, cardWidth * 0.22);
+    return Math.max(step, cardWidth * 0.32);
   }, [cardCount, cardWidth, availableWidth, naturalWidth]);
 
   // 手牌总宽度（用于居中）
@@ -218,32 +242,35 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
     const isLandlord = state.landlord === index;
 
     return (
-      <div className="flex items-center gap-2 rounded-xl px-3 py-1.5 border-2 bg-card/90 backdrop-blur-sm"
+      <div className="flex items-center gap-2 rounded-xl px-3 py-2 bg-black/30 backdrop-blur-sm border-2"
         style={isCurrent
-          ? { borderColor: "var(--color-yellow-400)", background: "rgba(254,249,195,0.8)" }
-          : { borderColor: "var(--color-border)" }
+          ? { borderColor: "#FBBF24", boxShadow: "0 0 8px rgba(251,191,36,0.4)" }
+          : { borderColor: "rgba(255,255,255,0.1)" }
         }
       >
         <div
           className={cn(
             "w-10 h-10 rounded-full flex items-center justify-center text-base font-bold shrink-0",
             isLandlord
-              ? "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-              : "bg-muted text-muted-foreground"
+              ? "bg-red-500/80 text-white"
+              : "bg-white/20 text-white"
           )}
         >
           {isLandlord ? "地" : "农"}
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="font-bold text-sm leading-tight truncate">
+          <span className="font-bold text-sm leading-tight truncate text-white">
             {getPlayerName(index, player.isAI)}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-white/70">
             剩余 {player.hand.length} 张
           </span>
         </div>
         {isCurrent && (
-          <span className="text-xs font-bold text-yellow-600 dark:text-yellow-400 animate-pulse shrink-0">
+          <span
+            className="text-xs font-bold text-yellow-300 shrink-0 inline-block"
+            style={{ minWidth: "48px", textAlign: "center" }}
+          >
             思考中...
           </span>
         )}
@@ -261,19 +288,19 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
           <div
             key={i}
             style={{
-              width: "clamp(18px, 4vw, 28px)",
+              width: "clamp(18px, 3vw, 28px)",
               aspectRatio: "0.7",
-              marginLeft: i === 0 ? 0 : "-clamp(10px, 2.5vw, 16px)",
+              marginLeft: i === 0 ? 0 : "-clamp(10px, 2vw, 16px)",
               borderRadius: "4px",
-              border: "1.5px solid var(--color-border)",
-              background: "linear-gradient(135deg, rgba(99,102,241,0.7), rgba(99,102,241,0.9))",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+              border: "1.5px solid rgba(255,255,255,0.2)",
+              background: "linear-gradient(135deg, #3949AB, #1A237E)",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
               zIndex: i,
               position: "relative",
             }}
           />
         ))}
-        <span className="text-xs text-muted-foreground ml-1.5 shrink-0">
+        <span className="text-xs text-white/60 ml-1.5 shrink-0">
           {count}张
         </span>
       </div>
@@ -291,7 +318,7 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
         style={{
           paddingLeft: containerPadding,
           paddingRight: containerPadding,
-          height: "clamp(100px, 22vw, 170px)", // 留出选中牌抬起的空间
+          height: "clamp(110px, 24vw, 180px)", // 留出选中牌抬起的空间
         }}
       >
         <div
@@ -343,6 +370,7 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
                   }}
                   disabled={!isPlayerTurn}
                   size="hand"
+                  style={{ width: cardWidth }}
                 />
               </div>
             );
@@ -353,97 +381,96 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
   };
 
   return (
-    <div
-      className="flex flex-col w-full h-full bg-background"
-      style={{ overflow: "hidden" }}
-    >
-      {/* 顶部信息栏 */}
-      <header className="shrink-0 flex items-center justify-between px-3 py-2 bg-background/80 border-b border-border">
-        <div className="flex items-center gap-2">
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="text-xl hover:scale-110 transition-transform"
-              aria-label="返回"
-            >
-              ←
-            </button>
-          )}
-          <div className="flex flex-col">
-            <h1 className="text-base font-bold leading-tight">斗地主</h1>
-            <span className="text-xs text-muted-foreground leading-tight">
-              {state.phase === "bidding"
-                ? "叫地主阶段"
-                : state.phase === "playing"
-                  ? state.landlord !== null
-                    ? `${getPlayerName(state.landlord, state.players[state.landlord].isAI)} 是地主`
-                    : "出牌中"
-                  : "游戏结束"}
-            </span>
+    <div className="w-full h-full flex flex-col overflow-hidden">
+      {/* 外层木质边框 + 绿色牌桌 */}
+      <div
+        className="flex-1 m-1 sm:m-2 rounded-2xl border-[6px] sm:border-[8px] overflow-hidden flex flex-col"
+        style={{
+          background: "#1B5E20",
+          borderColor: "#8D6E63",
+          boxShadow: "inset 0 0 60px rgba(0,0,0,0.4), 0 4px 20px rgba(0,0,0,0.3)",
+        }}
+      >
+        {/* 顶部信息栏 */}
+        <header className="shrink-0 flex items-center justify-between px-3 sm:px-4 py-2 bg-black/20 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="text-xl sm:text-2xl text-white hover:scale-110 transition-transform"
+                aria-label="返回"
+              >
+                ←
+              </button>
+            )}
+            <h1 className="text-base sm:text-lg font-bold text-white">斗地主</h1>
           </div>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {state.bombCount > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400">
-              x{state.bombCount}
-            </span>
-          )}
-          {state.rocketCount > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400">
-              x{state.rocketCount}
-            </span>
-          )}
-          {state.landlord !== null && (
-            <span className="text-xs text-muted-foreground">
-              倍数: {Math.pow(2, state.bombCount + state.rocketCount)}x
-            </span>
-          )}
-        </div>
-      </header>
 
-      {/* 消息提示 */}
-      {message && (
-        <div className="shrink-0 px-4 py-1.5 text-center">
-          <span className="inline-block px-3 py-1 rounded-full bg-muted text-xs font-medium">
-            {message}
-          </span>
-        </div>
-      )}
+          {/* 中间：底牌 */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-white/60">底牌</span>
+            {state.bottomCards.length > 0 && (
+              <div className="flex items-center gap-0.5">
+                {state.bottomCards.map((card) => {
+                  const showFace = state.phase === "playing" && state.landlord !== null;
+                  return (
+                    <div
+                      key={card.id}
+                      className="inline-flex items-center justify-center rounded border font-bold leading-none"
+                      style={{
+                        width: "clamp(22px, 4vw, 34px)",
+                        aspectRatio: "0.7",
+                        fontSize: "clamp(9px, 1.6vw, 12px)",
+                        borderColor: showFace
+                          ? (isRedSuit(card.suit) ? "#fecaca" : "#e5e7eb")
+                          : "rgba(255,255,255,0.2)",
+                        background: showFace ? "#fff" : "linear-gradient(135deg, #3949AB, #1A237E)",
+                        color: showFace
+                          ? (isRedSuit(card.suit) ? "#dc2626" : "#374151")
+                          : "transparent",
+                      }}
+                    >
+                      {showFace ? RANK_DISPLAY[card.rank] : ""}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-      {/* 游戏主区域 */}
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* 上方区域：其他玩家 + 中央出牌区 */}
-        <div className="flex-1 flex flex-col min-h-0 px-2 pt-1">
-          {/* 上方其他玩家行 */}
-          <div className="shrink-0 flex justify-between items-start gap-2">
-            {/* 左侧玩家（玩家2） */}
-            <div className="flex flex-col items-start gap-1 min-w-0" style={{ maxWidth: "35%" }}>
+          <div className="flex items-center gap-2">
+            {state.bombCount > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/80 text-white font-bold">
+                💣x{state.bombCount}
+              </span>
+            )}
+            {state.landlord !== null && (
+              <span className="text-sm font-bold text-yellow-300">
+                {Math.pow(2, state.bombCount + state.rocketCount)}x
+              </span>
+            )}
+          </div>
+        </header>
+
+        {/* 游戏主区域 */}
+        <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* 上方：左右玩家 */}
+          <div className="shrink-0 flex justify-between items-start px-2 sm:px-3 py-2">
+            <div className="flex flex-col items-start gap-1 min-w-0" style={{ maxWidth: "38%" }}>
               {renderPlayerInfo(2)}
               {renderCardBacks(2)}
             </div>
-
-            {/* 右侧玩家（玩家1） */}
-            <div className="flex flex-col items-end gap-1 min-w-0" style={{ maxWidth: "35%" }}>
+            <div className="flex flex-col items-end gap-1 min-w-0" style={{ maxWidth: "38%" }}>
               {renderPlayerInfo(1)}
               {renderCardBacks(1)}
             </div>
           </div>
 
-          {/* 中央出牌区 */}
-          <div className="flex-1 flex flex-col items-center justify-center min-h-0 px-2">
-            {/* 底牌显示（叫地主结束后短暂显示） */}
-            {state.phase === "playing" && state.landlord !== null && state.bottomCards.length > 0 && (
-              <div className="shrink-0 flex items-center justify-center gap-1 mb-2">
-                <span className="text-xs text-muted-foreground mr-1">底牌:</span>
-                {state.bottomCards.map((card) => (
-                  <PokerCardComponent key={card.id} card={card} size="sm" disabled />
-                ))}
-              </div>
-            )}
-
+          {/* 中央区域 */}
+          <div className="flex-1 flex flex-col items-center justify-center min-h-0 px-2 gap-2">
             {state.currentPlay && state.currentPlayPlayer !== null && (
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-xs text-muted-foreground">
+              <div className="flex flex-col items-center gap-1.5">
+                <span className="text-xs sm:text-sm text-white/80 font-medium">
                   {getPlayerName(state.currentPlayPlayer, state.players[state.currentPlayPlayer].isAI)} 出牌
                 </span>
                 <div className="flex justify-center gap-1 flex-wrap">
@@ -456,78 +483,79 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
                     />
                   ))}
                 </div>
-                <span className="text-sm font-medium text-muted-foreground">
+                <span className="text-sm sm:text-base font-bold text-yellow-300">
                   {handTypeName(state.currentPlay.type)}
                 </span>
               </div>
             )}
             {!state.currentPlay && state.phase === "playing" && (
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm sm:text-base text-white/60">
                 {state.currentPlayPlayer === 0 ? "新一轮，请出牌" : "等待出牌..."}
+              </div>
+            )}
+
+            {/* 消息提示 */}
+            {message && (
+              <div className="px-4 py-1.5 rounded-full bg-black/40 text-white text-xs sm:text-sm font-medium">
+                {message}
               </div>
             )}
 
             {/* 叫地主界面 */}
             {state.phase === "bidding" && state.currentPlayer === 0 && (
-              <div className="flex flex-col items-center gap-3">
-                <p className="text-lg font-bold">轮到您叫地主</p>
-                <div className="flex gap-3">
-                  <Button
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-lg sm:text-xl font-bold text-white">轮到您叫地主</p>
+                <div className="flex gap-4">
+                  <button
                     onClick={() => handleBid("call")}
-                    className="h-12 px-6 text-lg font-bold"
+                    className="h-14 px-8 rounded-xl text-lg font-bold text-white bg-amber-600 hover:bg-amber-700 border border-amber-700 shadow-lg transition-colors"
                   >
                     叫地主
-                  </Button>
-                  <Button
-                    variant="outline"
+                  </button>
+                  <button
                     onClick={() => handleBid("pass")}
-                    className="h-12 px-6 text-lg font-bold"
+                    className="h-14 px-8 rounded-xl text-lg font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 transition-colors"
                   >
                     不叫
-                  </Button>
+                  </button>
                 </div>
               </div>
             )}
           </div>
-        </div>
 
-        {/* 下方区域：操作按钮 + 玩家信息 + 手牌 */}
-        <div className="shrink-0 flex flex-col">
-          {/* 操作按钮 - 始终放在手牌上方 */}
+          {/* 操作按钮 - 手牌上方 */}
           {state.phase === "playing" && (
-            <div className="flex justify-center gap-2 px-3 py-1.5">
-              <Button
-                variant="secondary"
+            <div className="shrink-0 flex justify-center gap-3 px-3 py-2">
+              <button
                 onClick={handleHint}
-                className="h-9 px-4 text-sm font-bold"
                 disabled={!isPlayerTurn}
+                className="h-12 px-5 rounded-xl text-base font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 提示
-              </Button>
-              <Button
-                variant="outline"
+              </button>
+              <button
                 onClick={handlePass}
                 disabled={
                   !isPlayerTurn ||
                   state.currentPlay === null ||
                   state.currentPlayPlayer === 0
                 }
-                className="h-9 px-4 text-sm font-bold"
+                className="h-12 px-5 rounded-xl text-base font-bold text-white bg-white/10 hover:bg-white/20 border border-white/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 不出
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={handlePlay}
                 disabled={!isPlayerTurn || selectedCards.size === 0}
-                className="h-9 px-4 text-sm font-bold"
+                className="h-12 px-5 rounded-xl text-base font-bold text-white bg-amber-600 hover:bg-amber-700 border border-amber-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-md transition-colors"
               >
                 出牌
-              </Button>
+              </button>
             </div>
           )}
 
           {/* 玩家信息（自己） */}
-          <div className="flex justify-center px-3 pb-1">
+          <div className="shrink-0 flex justify-center px-3 pb-1">
             {renderPlayerInfo(0)}
           </div>
 
@@ -540,98 +568,18 @@ export function DoudizhuGame({ onBack }: DoudizhuGameProps) {
           >
             {renderHandCards()}
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
 
       {/* 游戏结束弹窗 */}
-      {showResult && state.phase === "finished" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <h2 className="text-2xl font-bold text-center mb-4">
-              {state.winner === 0 ? "您赢了！" : "您输了"}
-            </h2>
-
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between text-lg">
-                <span>赢家:</span>
-                <span className="font-bold">
-                  {state.winner !== null
-                    ? getPlayerName(state.winner, state.players[state.winner].isAI)
-                    : ""}
-                </span>
-              </div>
-              {state.spring && (
-                <div className="text-center text-red-500 font-bold">
-                  春天！
-                </div>
-              )}
-              {state.antiSpring && (
-                <div className="text-center text-red-500 font-bold">
-                  反春！
-                </div>
-              )}
-              {state.scores && (
-                <div className="space-y-1 pt-2 border-t border-border">
-                  <div className="flex justify-between text-base">
-                    <span>地主得分:</span>
-                    <span
-                      className={cn(
-                        "font-bold",
-                        state.scores.landlord > 0 ? "text-green-600" : "text-red-600"
-                      )}
-                    >
-                      {state.scores.landlord > 0 ? "+" : ""}
-                      {state.scores.landlord}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-base">
-                    <span>农民1得分:</span>
-                    <span
-                      className={cn(
-                        "font-bold",
-                        state.scores.peasant1 > 0 ? "text-green-600" : "text-red-600"
-                      )}
-                    >
-                      {state.scores.peasant1 > 0 ? "+" : ""}
-                      {state.scores.peasant1}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-base">
-                    <span>农民2得分:</span>
-                    <span
-                      className={cn(
-                        "font-bold",
-                        state.scores.peasant2 > 0 ? "text-green-600" : "text-red-600"
-                      )}
-                    >
-                      {state.scores.peasant2 > 0 ? "+" : ""}
-                      {state.scores.peasant2}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                onClick={handleRestart}
-                className="flex-1 h-12 text-lg font-bold"
-              >
-                再来一局
-              </Button>
-              {onBack && (
-                <Button
-                  variant="outline"
-                  onClick={onBack}
-                  className="flex-1 h-12 text-lg font-bold"
-                >
-                  返回菜单
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <GameResultModal
+        result={showResult ? gameResult : null}
+        message={resultMessage}
+        onRestart={handleRestart}
+        onBack={() => {
+          if (onBack) onBack();
+        }}
+      />
     </div>
   );
 }

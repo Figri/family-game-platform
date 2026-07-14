@@ -20,6 +20,7 @@ export type PlayerIndex = 0 | 1 | 2 | 3;
 /** 游戏阶段 */
 export type GamePhase =
   | "tribute"      // 进贡阶段
+  | "return-tribute" // 还贡阶段
   | "playing"      // 出牌阶段
   | "finished";    // 游戏结束
 
@@ -75,10 +76,16 @@ export interface GuandanState {
   winningTeam: 0 | 1 | null;
   /** 出牌历史记录 */
   playHistory: { player: PlayerIndex; cards: PokerCard[] | null }[];
-  /** 进贡状态 */
+  /** 进贡/还贡状态 */
   tributeStatus: {
-    done: boolean;
-    tributes: { from: PlayerIndex; to: PlayerIndex; card: PokerCard | null }[];
+    /** 待进贡队列 */
+    pendingTributes: { from: PlayerIndex; to: PlayerIndex }[];
+    /** 待还贡队列 */
+    pendingReturns: { from: PlayerIndex; to: PlayerIndex }[];
+    /** 已完成的进贡 */
+    tributes: { from: PlayerIndex; to: PlayerIndex; card: PokerCard }[];
+    /** 已完成的还贡 */
+    returns: { from: PlayerIndex; to: PlayerIndex; card: PokerCard }[];
   };
 }
 
@@ -416,7 +423,7 @@ export function getNextLevel(current: RankDisplay): RankDisplay | null {
   return RANK_DISPLAY_ORDER[idx + 1];
 }
 
-/** 创建初始游戏状态 */
+/** 创建初始游戏状态（第一局，跳过进贡） */
 export function createGuandanInitialState(): GuandanState {
   const deck = createDoubleDeck();
   const hands = dealGuandanCards(deck);
@@ -441,7 +448,89 @@ export function createGuandanInitialState(): GuandanState {
     winner: null,
     winningTeam: null,
     playHistory: [],
-    tributeStatus: { done: true, tributes: [] },
+    tributeStatus: {
+      pendingTributes: [],
+      pendingReturns: [],
+      tributes: [],
+      returns: [],
+    },
+  };
+}
+
+/** 创建下一局游戏状态（含进贡/还贡） */
+export function createGuandanNextRoundState(prevState: GuandanState): GuandanState {
+  const deck = createDoubleDeck();
+  const hands = dealGuandanCards(deck);
+
+  const players: [GuandanPlayerState, GuandanPlayerState, GuandanPlayerState, GuandanPlayerState] = [
+    { index: 0, hand: hands[0], isAI: false, playedCount: 0 },
+    { index: 1, hand: hands[1], isAI: true, playedCount: 0 },
+    { index: 2, hand: hands[2], isAI: true, playedCount: 0 },
+    { index: 3, hand: hands[3], isAI: true, playedCount: 0 },
+  ];
+
+  // 级牌推进：获胜方升一级
+  const nextLevel = prevState.winningTeam === 0
+    ? (getNextLevel(prevState.currentLevel) ?? prevState.currentLevel)
+    : prevState.currentLevel;
+
+  const prevWinningTeam = prevState.winningTeam;
+
+  // 有上一局胜者，则需要进贡/还贡
+  if (prevWinningTeam !== null) {
+    let pendingTributes: { from: PlayerIndex; to: PlayerIndex }[];
+    if (prevWinningTeam === 0) {
+      // 我方赢，对方（1、3）向我方（0、2）进贡
+      pendingTributes = [
+        { from: 1, to: 0 },
+        { from: 3, to: 2 },
+      ];
+    } else {
+      // 对方赢，我方（0、2）向对方（1、3）进贡
+      pendingTributes = [
+        { from: 0, to: 1 },
+        { from: 2, to: 3 },
+      ];
+    }
+
+    return {
+      phase: "tribute",
+      players,
+      currentPlayer: pendingTributes[0].from,
+      currentLevel: nextLevel,
+      currentPlay: null,
+      currentPlayPlayer: null,
+      consecutivePasses: 0,
+      winner: null,
+      winningTeam: null,
+      playHistory: [],
+      tributeStatus: {
+        pendingTributes,
+        pendingReturns: [],
+        tributes: [],
+        returns: [],
+      },
+    };
+  }
+
+  // 无上一局胜者，直接进入出牌阶段
+  return {
+    phase: "playing",
+    players,
+    currentPlayer: 0,
+    currentLevel: nextLevel,
+    currentPlay: null,
+    currentPlayPlayer: null,
+    consecutivePasses: 0,
+    winner: null,
+    winningTeam: null,
+    playHistory: [],
+    tributeStatus: {
+      pendingTributes: [],
+      pendingReturns: [],
+      tributes: [],
+      returns: [],
+    },
   };
 }
 
@@ -601,4 +690,153 @@ export function guandanHandTypeName(type: GuandanHandType): string {
     rocket: "火箭",
   };
   return names[type] || type;
+}
+
+// ===================== 进贡/还贡 =====================
+
+/** 执行进贡 */
+export function doTribute(
+  state: GuandanState,
+  card: PokerCard
+): GuandanState {
+  if (state.phase !== "tribute") return state;
+
+  const pending = state.tributeStatus.pendingTributes[0];
+  if (!pending) return state;
+
+  // 验证当前玩家是否为进贡者
+  if (state.currentPlayer !== pending.from) return state;
+
+  // 验证牌在玩家手牌中
+  const player = state.players[pending.from];
+  if (!player.hand.find((c) => c.id === card.id)) return state;
+
+  // 从手牌中移除
+  const newHand = removeCardsFromHand(player.hand, [card]);
+  const newPlayers: [GuandanPlayerState, GuandanPlayerState, GuandanPlayerState, GuandanPlayerState] = [
+    { ...state.players[0] },
+    { ...state.players[1] },
+    { ...state.players[2] },
+    { ...state.players[3] },
+  ];
+  newPlayers[pending.from] = { ...player, hand: newHand };
+
+  // 记录进贡
+  const newTributes = [...state.tributeStatus.tributes, { ...pending, card }];
+  const newPendingTributes = state.tributeStatus.pendingTributes.slice(1);
+
+  // 进贡完成，进入还贡阶段
+  if (newPendingTributes.length === 0) {
+    const pendingReturns = newTributes.map((t) => ({ from: t.to, to: t.from }));
+
+    return {
+      ...state,
+      phase: "return-tribute",
+      players: newPlayers,
+      currentPlayer: pendingReturns[0].from,
+      tributeStatus: {
+        ...state.tributeStatus,
+        pendingTributes: [],
+        pendingReturns,
+        tributes: newTributes,
+      },
+    };
+  }
+
+  // 继续下一位进贡
+  return {
+    ...state,
+    players: newPlayers,
+    currentPlayer: newPendingTributes[0].from,
+    tributeStatus: {
+      ...state.tributeStatus,
+      pendingTributes: newPendingTributes,
+      tributes: newTributes,
+    },
+  };
+}
+
+/** 执行还贡 */
+export function doReturnTribute(
+  state: GuandanState,
+  card: PokerCard
+): GuandanState {
+  if (state.phase !== "return-tribute") return state;
+
+  const pending = state.tributeStatus.pendingReturns[0];
+  if (!pending) return state;
+
+  if (state.currentPlayer !== pending.from) return state;
+
+  const player = state.players[pending.from];
+  if (!player.hand.find((c) => c.id === card.id)) return state;
+
+  const newHand = removeCardsFromHand(player.hand, [card]);
+  const newPlayers: [GuandanPlayerState, GuandanPlayerState, GuandanPlayerState, GuandanPlayerState] = [
+    { ...state.players[0] },
+    { ...state.players[1] },
+    { ...state.players[2] },
+    { ...state.players[3] },
+  ];
+  newPlayers[pending.from] = { ...player, hand: newHand };
+
+  const newReturns = [...state.tributeStatus.returns, { ...pending, card }];
+  const newPendingReturns = state.tributeStatus.pendingReturns.slice(1);
+
+  // 还贡完成，交换牌并进入出牌阶段
+  if (newPendingReturns.length === 0) {
+    const allTributes = state.tributeStatus.tributes;
+
+    // 给每位玩家添加收到的牌，并重新理牌
+    const finalPlayers = newPlayers.map((p, idx) => {
+      let hand = [...p.hand];
+      for (const t of allTributes) {
+        if (t.to === idx) hand.push(t.card);
+      }
+      for (const r of newReturns) {
+        if (r.to === idx) hand.push(r.card);
+      }
+      return { ...p, hand: sortGuandanCards(hand, state.currentLevel) };
+    }) as [GuandanPlayerState, GuandanPlayerState, GuandanPlayerState, GuandanPlayerState];
+
+    return {
+      ...state,
+      phase: "playing",
+      players: finalPlayers,
+      currentPlayer: 0,
+      currentPlay: null,
+      currentPlayPlayer: null,
+      consecutivePasses: 0,
+      tributeStatus: {
+        ...state.tributeStatus,
+        pendingReturns: [],
+        returns: newReturns,
+      },
+    };
+  }
+
+  // 继续下一位还贡
+  return {
+    ...state,
+    players: newPlayers,
+    currentPlayer: newPendingReturns[0].from,
+    tributeStatus: {
+      ...state.tributeStatus,
+      pendingReturns: newPendingReturns,
+      returns: newReturns,
+    },
+  };
+}
+
+/** AI 进贡决策：选最大牌 */
+export function aiTributeDecision(hand: PokerCard[], level: RankDisplay): PokerCard {
+  const sorted = sortGuandanCards(hand, level);
+  return sorted[sorted.length - 1];
+}
+
+/** AI 还贡决策：选最小非级牌，否则选最小牌 */
+export function aiReturnTributeDecision(hand: PokerCard[], level: RankDisplay): PokerCard {
+  const sorted = sortGuandanCards(hand, level);
+  const nonLevel = sorted.find((c) => c.rank !== level);
+  return nonLevel || sorted[0];
 }

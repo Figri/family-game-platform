@@ -16,12 +16,12 @@ import {
 } from "@/lib/games/snake";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { GameResultModal } from "@/components/game-result-modal";
 
 function drawGame(
   ctx: CanvasRenderingContext2D,
   state: SnakeGameState,
-  cellSize: number,
-  elderlyMode: boolean
+  cellSize: number
 ) {
   const actualSize = cellSize * state.gridSize;
 
@@ -85,12 +85,10 @@ function drawGame(
 function TouchButton({
   onClick,
   label,
-  elderlyMode,
   color = "default",
 }: {
   onClick: () => void;
   label: string;
-  elderlyMode: boolean;
   color?: "default" | "green" | "blue";
 }) {
   const colorClasses = {
@@ -104,10 +102,14 @@ function TouchButton({
       onClick={onClick}
       className={cn(
         "flex items-center justify-center rounded-lg font-semibold select-none active:scale-95 transition-transform",
-        colorClasses[color],
-        elderlyMode ? "w-20 h-20 text-2xl" : "w-14 h-14 text-lg"
+        colorClasses[color]
       )}
-      style={{ minWidth: 56, minHeight: 48, touchAction: "manipulation" }}
+      style={{
+        width: "clamp(64px, 18vw, 88px)",
+        height: "clamp(64px, 18vw, 88px)",
+        fontSize: "clamp(24px, 5vw, 30px)",
+        touchAction: "manipulation",
+      }}
       aria-label={label}
     >
       {label}
@@ -120,7 +122,6 @@ interface SnakeGameProps {
 }
 
 export function SnakeGame({ mode }: SnakeGameProps) {
-  const elderlyMode = false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SnakeGameState>(createInitialState(mode));
@@ -315,8 +316,8 @@ export function SnakeGame({ mode }: SnakeGameProps) {
     canvas.height = size;
     canvas.style.width = `${size}px`;
     canvas.style.height = `${size}px`;
-    drawGame(ctx, state, cellSize, elderlyMode);
-  }, [renderTick, cellSize, elderlyMode]);
+    drawGame(ctx, state, cellSize);
+  }, [renderTick, cellSize]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -333,7 +334,7 @@ export function SnakeGame({ mode }: SnakeGameProps) {
   const isIdle = state.status === "idle";
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden">
+    <div className="flex flex-col h-[100dvh] w-full overflow-hidden">
       {/* Top: Score - compact */}
       <div
         className="shrink-0 flex items-center justify-between px-3 bg-[#FFF9F0]"
@@ -382,8 +383,8 @@ export function SnakeGame({ mode }: SnakeGameProps) {
             className="block"
           />
 
-          {/* Overlay for idle / paused / game over */}
-          {(isIdle || isPaused || isGameOver) && (
+          {/* Overlay for idle / paused */}
+          {(isIdle || isPaused) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 gap-4">
               {isIdle && (
                 <>
@@ -411,46 +412,34 @@ export function SnakeGame({ mode }: SnakeGameProps) {
                   </Button>
                 </>
               )}
-              {isGameOver && (
-                <>
-                  <p className="text-white text-2xl font-bold">
-                    游戏结束
-                  </p>
-                  {mode === "duo" && (
-                    <p className="text-white text-xl font-semibold">
-                      {state.winner === 0
-                        ? "玩家1 获胜！"
-                        : state.winner === 1
-                        ? "玩家2 获胜！"
-                        : "平局！"}
-                    </p>
-                  )}
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={handleRestart}
-                      className="h-14 px-6 text-xl font-semibold"
-                    >
-                      重新开始
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => { window.location.href = "/family-game-platform/game/snake/menu"; }}
-                      className="h-14 px-6 text-xl font-semibold bg-white/90"
-                    >
-                      返回菜单
-                    </Button>
-                  </div>
-                </>
-              )}
             </div>
           )}
         </div>
       </div>
 
+      <GameResultModal
+        result={isGameOver ? (mode === "single" ? "lose" : state.winner === 0 ? "win" : state.winner === 1 ? "win" : "draw") : null}
+        message={
+          isGameOver
+            ? mode === "single"
+              ? `最终得分: ${state.snakes[0]?.score ?? 0}`
+              : state.winner === 0
+              ? "玩家1 获胜！"
+              : state.winner === 1
+              ? "玩家2 获胜！"
+              : "平局！"
+            : ""
+        }
+        onRestart={handleRestart}
+        onBack={() => {
+          window.location.href = "/family-game-platform/game/snake/menu";
+        }}
+      />
+
       {/* Bottom: Controls - compact */}
       <div
-        className="shrink-0 flex flex-col items-center gap-[6px] px-3 pb-2 pt-1 bg-[#FFF9F0] overflow-hidden"
-        style={{ touchAction: "manipulation" }}
+        className="shrink-0 flex flex-col items-center gap-[6px] px-3 pt-1 bg-[#FFF9F0] overflow-hidden"
+        style={{ touchAction: "manipulation", marginBottom: "clamp(70px, 10dvh, 120px)" }}
       >
         {/* Pause / Restart row */}
         <div className="flex gap-2 w-full max-w-[400px]">
@@ -478,23 +467,19 @@ export function SnakeGame({ mode }: SnakeGameProps) {
             <TouchButton
               onClick={() => handleDirection(0, "UP")}
               label="上"
-              elderlyMode={elderlyMode}
             />
             <div />
             <TouchButton
               onClick={() => handleDirection(0, "LEFT")}
               label="左"
-              elderlyMode={elderlyMode}
             />
             <TouchButton
               onClick={() => handleDirection(0, "DOWN")}
               label="下"
-              elderlyMode={elderlyMode}
             />
             <TouchButton
               onClick={() => handleDirection(0, "RIGHT")}
               label="右"
-              elderlyMode={elderlyMode}
             />
           </div>
         ) : (
@@ -506,26 +491,22 @@ export function SnakeGame({ mode }: SnakeGameProps) {
                 <TouchButton
                   onClick={() => handleDirection(0, "UP")}
                   label="上"
-                  elderlyMode={elderlyMode}
                   color="green"
                 />
                 <div />
                 <TouchButton
                   onClick={() => handleDirection(0, "LEFT")}
                   label="左"
-                  elderlyMode={elderlyMode}
                   color="green"
                 />
                 <TouchButton
                   onClick={() => handleDirection(0, "DOWN")}
                   label="下"
-                  elderlyMode={elderlyMode}
                   color="green"
                 />
                 <TouchButton
                   onClick={() => handleDirection(0, "RIGHT")}
                   label="右"
-                  elderlyMode={elderlyMode}
                   color="green"
                 />
               </div>
@@ -537,26 +518,22 @@ export function SnakeGame({ mode }: SnakeGameProps) {
                 <TouchButton
                   onClick={() => handleDirection(1, "UP")}
                   label="上"
-                  elderlyMode={elderlyMode}
                   color="blue"
                 />
                 <div />
                 <TouchButton
                   onClick={() => handleDirection(1, "LEFT")}
                   label="左"
-                  elderlyMode={elderlyMode}
                   color="blue"
                 />
                 <TouchButton
                   onClick={() => handleDirection(1, "DOWN")}
                   label="下"
-                  elderlyMode={elderlyMode}
                   color="blue"
                 />
                 <TouchButton
                   onClick={() => handleDirection(1, "RIGHT")}
                   label="右"
-                  elderlyMode={elderlyMode}
                   color="blue"
                 />
               </div>

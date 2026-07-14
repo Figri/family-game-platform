@@ -8,7 +8,7 @@ function DoudizhuGameContent() {
   const backUrl = "/family-game-platform/game/doudizhu/select";
 
   return (
-    <GameWrapper>
+    <GameWrapper landscape>
       <DoudizhuGame onBack={() => { window.location.href = backUrl; }} />
     </GameWrapper>
   );

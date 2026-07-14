@@ -16,6 +16,7 @@ import {
   type PlayerIndex,
   type GuandanPlayAction,
   createGuandanInitialState,
+  createGuandanNextRoundState,
   doGuandanPlay,
   aiGuandanPlayDecision,
   getGuandanPlayerName,
@@ -25,12 +26,19 @@ import {
   canPlayGuandanBeat,
   suggestGuandanPlay,
   type RankDisplay,
+  doTribute,
+  doReturnTribute,
+  aiTributeDecision,
+  aiReturnTributeDecision,
 } from "@/lib/games/guandan";
 import { PokerCard as PokerCardComponent, PokerCardBack } from "./poker-card";
+import { GameResultModal } from "@/components/game-result-modal";
 
 interface GuandanGameProps {
   onBack?: () => void;
 }
+
+const CARD_WIDTH_CSS = "clamp(40px, 8vw, 60px)";
 
 /** 手牌重叠布局 */
 function OverlappingHand({
@@ -48,6 +56,17 @@ function OverlappingHand({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(360);
+  const [cardWidth, setCardWidth] = useState(50);
+
+  useEffect(() => {
+    const update = () => {
+      const vw = typeof window !== "undefined" ? window.innerWidth : 375;
+      setCardWidth(Math.min(Math.max(vw * 0.08, 40), 60));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -61,16 +80,9 @@ function OverlappingHand({
     return () => ro.disconnect();
   }, []);
 
-  // 计算 cardWidth (px)，使用 clamp 逻辑
-  const cardWidth = useMemo(() => {
-    const vw = typeof window !== "undefined" ? window.innerWidth : 375;
-    const w = Math.min(Math.max(Math.floor(vw * 0.07), 36), 64);
-    return w;
-  }, []);
-
   // 计算重叠步长
   const step = useMemo(() => {
-    const paddingX = 16; // 两侧各 8px
+    const paddingX = 8;
     const availableWidth = containerWidth - paddingX;
     const cardCount = cards.length;
     if (cardCount <= 1) return cardWidth;
@@ -79,7 +91,7 @@ function OverlappingHand({
     if (naturalWidth > availableWidth) {
       s = (availableWidth - cardWidth) / (cardCount - 1);
     }
-    return Math.max(s, cardWidth * 0.18);
+    return Math.max(s, cardWidth * 0.22);
   }, [cards.length, cardWidth, containerWidth]);
 
   // 判断是否为级牌
@@ -88,30 +100,32 @@ function OverlappingHand({
     [currentLevel]
   );
 
-  // 判断是否为逢人配（Joker）
-  const isJokerCard = useCallback(
+  // 判断是否为逢人配（红桃级牌）
+  const isFengRenPei = useCallback(
     (card: PokerCardType) =>
-      card.rank === "small-joker" || card.rank === "big-joker",
-    []
+      card.rank === currentLevel && card.suit === "heart",
+    [currentLevel]
   );
+
+  const containerHeight = cardWidth * 1.5 + 16;
 
   return (
     <div
       ref={containerRef}
       className="relative flex items-end justify-center w-full"
-      style={{ height: cardWidth * 1.4 + 16 }}
+      style={{ height: containerHeight }}
     >
       <div
         className="relative"
         style={{
           width: step * (cards.length - 1) + cardWidth,
-          height: cardWidth * 1.4 + 16,
+          height: containerHeight,
         }}
       >
         {cards.map((card, idx) => {
           const isSelected = selectedCards.has(card.id);
           const isLevel = isLevelCard(card);
-          const isJ = isJokerCard(card);
+          const isFRP = isFengRenPei(card);
           return (
             <div
               key={card.id}
@@ -119,8 +133,11 @@ function OverlappingHand({
               style={{
                 left: idx * step,
                 zIndex: idx + (isSelected ? 100 : 0),
-                transform: isSelected ? "translateY(-10px)" : "translateY(0)",
+                transform: isSelected ? "translateY(-12px)" : "translateY(0)",
                 transition: "transform 0.15s ease",
+                filter: isSelected
+                  ? "drop-shadow(0 8px 6px rgba(0,0,0,0.35))"
+                  : "none",
               }}
             >
               <div
@@ -138,23 +155,24 @@ function OverlappingHand({
                     if (isPlayerTurn) onToggleCard(card.id);
                   }}
                   disabled={!isPlayerTurn}
+                  style={{ width: CARD_WIDTH_CSS }}
                 />
                 {/* 级牌金色角标 */}
-                {isLevel && !isJ && (
+                {isLevel && !isFRP && (
                   <span
                     className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-[8px] font-bold leading-none text-yellow-900 bg-yellow-400 border border-yellow-500 shadow-sm"
                     style={{ width: 16, height: 16 }}
                   >
-                    {typeof window !== "undefined" && window.innerWidth < 360 ? "" : "级"}
+                    级
                   </span>
                 )}
-                {/* 逢人配星号角标 */}
-                {isJ && (
+                {/* 逢人配金色星标 */}
+                {isFRP && (
                   <span
-                    className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-[10px] font-bold leading-none text-white bg-red-500 border border-red-400 shadow-sm"
+                    className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-[10px] font-bold leading-none text-yellow-900 bg-yellow-300 border border-yellow-400 shadow-sm"
                     style={{ width: 16, height: 16 }}
                   >
-                    *
+                    ★
                   </span>
                 )}
               </div>
@@ -166,42 +184,58 @@ function OverlappingHand({
   );
 }
 
-/** 其他玩家的牌背叠放 */
-function OpponentCardBacks({
-  count,
-  variant,
+/** 玩家信息头像 */
+function PlayerInfo({
+  index,
+  state,
 }: {
-  count: number;
-  variant: "top" | "left" | "right";
+  index: PlayerIndex;
+  state: GuandanState;
 }) {
-  const showCount = Math.min(Math.max(Math.min(count, 5), 5), 8);
-  const remaining = count - showCount;
+  const player = state.players[index];
+  const isCurrent = state.currentPlayer === index &&
+    (state.phase === "playing" || state.phase === "tribute" || state.phase === "return-tribute");
+  const isTeammate = getTeammate(0) === index;
+  const isSelf = index === 0;
+  const isOpponent = !isTeammate && !isSelf;
 
-  if (variant === "top") {
-    // 上方玩家：横向叠放
-    return (
-      <div className="flex items-center justify-center gap-1.5">
-        {Array.from({ length: showCount }).map((_, i) => (
-          <PokerCardBack key={i} size="sm" />
-        ))}
-        {remaining > 0 && (
-          <span className="text-xs text-muted-foreground ml-1">
-            剩余 {count} 张
-          </span>
-        )}
-      </div>
-    );
-  }
+  const borderColor = isTeammate || isSelf ? "#3B82F6" : "#EF4444";
+  const bgColor = isTeammate || isSelf ? "rgba(59,130,246,0.2)" : "rgba(239,68,68,0.2)";
+  const textColor = isTeammate || isSelf ? "#93C5FD" : "#FCA5A5";
+  const label = isSelf ? "我" : isTeammate ? "友" : "敌";
 
-  // 左/右玩家：纵向叠放
   return (
-    <div className="flex flex-col items-center gap-0.5">
-      {Array.from({ length: showCount }).map((_, i) => (
-        <PokerCardBack key={i} size="sm" />
-      ))}
-      {remaining > 0 && (
-        <span className="text-xs text-muted-foreground mt-0.5">
-          剩余 {count} 张
+    <div className="flex flex-col items-center gap-0.5 relative">
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-full font-bold text-sm shrink-0 border-2",
+          isCurrent && "animate-pulse"
+        )}
+        style={{
+          width: 40,
+          height: 40,
+          backgroundColor: bgColor,
+          borderColor: isCurrent ? "#FACC15" : borderColor,
+          color: textColor,
+          boxShadow: isCurrent ? "0 0 8px rgba(250,204,21,0.5)" : "none",
+        }}
+      >
+        {label}
+      </div>
+      <span className="text-[11px] text-white/90 font-medium whitespace-nowrap leading-tight">
+        {getGuandanPlayerName(index, player.isAI)}
+      </span>
+      <span className="text-[10px] text-white/60">
+        {player.hand.length}张
+      </span>
+      {isTeammate && (
+        <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded-full text-[9px] font-bold bg-blue-500 text-white whitespace-nowrap">
+          队友
+        </span>
+      )}
+      {isCurrent && state.phase === "playing" && (
+        <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-[9px] font-bold text-yellow-300 whitespace-nowrap">
+          回合中
         </span>
       )}
     </div>
@@ -213,6 +247,7 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string>("");
   const [showResult, setShowResult] = useState(false);
+  const [round, setRound] = useState(1);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elderlyMode = false;
 
@@ -223,8 +258,17 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
     };
   }, []);
 
-  // AI 回合处理
+  // 阶段变化时清除选牌
   useEffect(() => {
+    if (state.phase === "tribute" || state.phase === "return-tribute") {
+      setSelectedCards(new Set());
+    }
+  }, [state.phase, state.currentPlayer]);
+
+  // AI 回合处理（出牌/进贡/还贡）
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+
     if (state.phase === "playing" && state.players[state.currentPlayer].isAI) {
       timerRef.current = setTimeout(() => {
         const action = aiGuandanPlayDecision(state);
@@ -243,6 +287,18 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
           return newState;
         });
       }, elderlyMode ? 2000 : 1200);
+    } else if (state.phase === "tribute" && state.players[state.currentPlayer].isAI) {
+      timerRef.current = setTimeout(() => {
+        const card = aiTributeDecision(state.players[state.currentPlayer].hand, state.currentLevel);
+        setState((prev) => doTribute(prev, card));
+        setMessage(`${getGuandanPlayerName(state.currentPlayer, true)} 已进贡`);
+      }, 1000);
+    } else if (state.phase === "return-tribute" && state.players[state.currentPlayer].isAI) {
+      timerRef.current = setTimeout(() => {
+        const card = aiReturnTributeDecision(state.players[state.currentPlayer].hand, state.currentLevel);
+        setState((prev) => doReturnTribute(prev, card));
+        setMessage(`${getGuandanPlayerName(state.currentPlayer, true)} 已还贡`);
+      }, 1000);
     } else if (state.phase === "finished" && !showResult) {
       timerRef.current = setTimeout(() => {
         setShowResult(true);
@@ -261,6 +317,11 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
       }
       return next;
     });
+  }, []);
+
+  // 进贡/还贡选牌（单选）
+  const selectSingleCard = useCallback((cardId: string) => {
+    setSelectedCards(new Set([cardId]));
   }, []);
 
   // 获取当前选中的牌
@@ -317,128 +378,131 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
 
   // 重新开始
   const handleRestart = useCallback(() => {
-    setState(createGuandanInitialState());
+    setState((prev) => createGuandanNextRoundState(prev));
     setSelectedCards(new Set());
     setMessage("");
     setShowResult(false);
+    setRound((r) => r + 1);
   }, []);
 
-  // 当前玩家
+  // 确认进贡
+  const handleConfirmTribute = useCallback(() => {
+    const cards = getSelectedCards();
+    if (cards.length !== 1) {
+      setMessage("请选择一张牌进贡");
+      return;
+    }
+    setState((prev) => doTribute(prev, cards[0]));
+    setSelectedCards(new Set());
+    setMessage("您已完成进贡");
+  }, [getSelectedCards]);
+
+  // 确认还贡
+  const handleConfirmReturnTribute = useCallback(() => {
+    const cards = getSelectedCards();
+    if (cards.length !== 1) {
+      setMessage("请选择一张牌还贡");
+      return;
+    }
+    setState((prev) => doReturnTribute(prev, cards[0]));
+    setSelectedCards(new Set());
+    setMessage("您已完成还贡");
+  }, [getSelectedCards]);
+
+  // 当前玩家是否可操作
   const isPlayerTurn =
     state.phase === "playing" && state.currentPlayer === 0 && !state.players[0].isAI;
 
-  // 渲染玩家头像区域
-  const renderPlayerInfo = (index: PlayerIndex) => {
-    const player = state.players[index];
-    const isCurrent = state.currentPlayer === index && state.phase === "playing";
-    const isTeammate = getTeammate(0) === index;
-    const isOpponent = !isTeammate && index !== 0;
+  const isPlayerTributeTurn =
+    state.phase === "tribute" && state.currentPlayer === 0;
 
-    return (
-      <div className={cn("flex flex-col items-center gap-1")}>
-        <div
-          className={cn(
-            "flex items-center gap-2 rounded-xl px-3 py-1.5 border-2",
-            isCurrent
-              ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30"
-              : "border-border bg-card"
-          )}
-        >
-          <div
-            className={cn(
-              "w-10 h-10 rounded-full flex items-center justify-center text-base font-bold shrink-0",
-              isTeammate
-                ? "bg-green-100 text-green-600 dark:bg-green-950 dark:text-green-400"
-                : isOpponent
-                ? "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-                : "bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400"
-            )}
-          >
-            {index === 0 ? "我" : isTeammate ? "友" : "敌"}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="font-bold text-sm leading-tight truncate">
-              {getGuandanPlayerName(index, player.isAI)}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {player.hand.length}张
-            </span>
-          </div>
-        </div>
-        {isCurrent && (
-          <span className="text-xs font-bold text-yellow-600 dark:text-yellow-400 animate-pulse">
-            回合中...
-          </span>
-        )}
-      </div>
-    );
-  };
+  const isPlayerReturnTributeTurn =
+    state.phase === "return-tribute" && state.currentPlayer === 0;
+
+  // 游戏结果
+  const gameResult = state.phase === "finished" && state.winningTeam !== null
+    ? state.winningTeam === 0 ? "win" : "lose"
+    : null;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* 顶部信息栏 */}
-      <header className="shrink-0 flex items-center justify-between px-4 py-2 bg-background/80 border-b border-border">
-        <div className="flex items-center gap-2">
+    <div
+      className="w-full flex flex-col overflow-hidden select-none"
+      style={{ height: "100dvh", background: "#1B5E20" }}
+    >
+      {/* 顶部状态栏 */}
+      <header
+        className="shrink-0 flex items-center justify-between px-4 py-2 text-white"
+        style={{ background: "#145A18" }}
+      >
+        <div className="flex items-center gap-3">
           {onBack && (
             <button
               onClick={onBack}
-              className="text-xl hover:scale-110 transition-transform"
+              className="text-lg hover:scale-110 transition-transform"
               aria-label="返回"
             >
               &larr;
             </button>
           )}
-          <div>
-            <h1 className="text-base font-bold leading-tight">掼蛋</h1>
-            <span className="text-xs text-muted-foreground">
-              {state.phase === "playing"
-                ? `级牌: ${state.currentLevel}`
-                : state.phase === "finished"
-                ? "游戏结束"
-                : "进贡阶段"}
-            </span>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="opacity-90">房间: 001</span>
+            <span className="opacity-50">|</span>
+            <span className="opacity-90">第 {round} 局</span>
           </div>
         </div>
-        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
-          我方: 玩家+{getGuandanPlayerName(2, true)}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-yellow-300">
+            本局级牌：{state.currentLevel}
+          </span>
+        </div>
       </header>
 
       {/* 消息提示 */}
       {message && (
         <div className="shrink-0 px-4 py-1 text-center">
-          <span className="inline-block px-3 py-1 rounded-full bg-muted text-xs font-medium">
+          <span className="inline-block px-3 py-1 rounded-full bg-black/30 text-white text-xs font-medium backdrop-blur-sm">
             {message}
           </span>
         </div>
       )}
 
-      {/* 游戏主区域 */}
-      <main className="flex-1 flex flex-col min-h-0 px-2 gap-1 overflow-hidden">
+      {/* 牌桌主区域 */}
+      <div
+        className="flex-1 relative mx-3 mb-3 rounded-xl border-[6px] overflow-hidden flex flex-col"
+        style={{
+          borderColor: "#8B6914",
+          background: "#1B5E20",
+          boxShadow: "inset 0 0 60px rgba(0,0,0,0.25), 0 0 0 2px #6B4F0F",
+        }}
+      >
         {/* 上方：对家 */}
-        <div className="shrink-0 flex justify-center items-start pt-1">
-          {renderPlayerInfo(2)}
-          <div className="mt-1">
-            <OpponentCardBacks count={state.players[2].hand.length} variant="top" />
-          </div>
+        <div className="shrink-0 flex justify-center pt-2">
+          <PlayerInfo index={2} state={state} />
         </div>
 
         {/* 中间行：左对手 + 出牌区 + 右对手 */}
-        <div className="flex-1 flex justify-between items-center min-h-0 px-1 overflow-hidden">
+        <div className="flex-1 flex min-h-0">
           {/* 左侧玩家 */}
-          <div className="shrink-0 flex flex-col items-center gap-1">
-            {renderPlayerInfo(3)}
-            <OpponentCardBacks count={state.players[3].hand.length} variant="left" />
+          <div className="shrink-0 flex flex-col justify-center pl-2">
+            <PlayerInfo index={3} state={state} />
           </div>
 
           {/* 中间：出牌区 */}
-          <div className="flex-1 flex flex-col items-center justify-center min-h-0 px-2">
+          <div className="flex-1 relative min-h-0">
+            {/* 各座位出牌位置 */}
             {state.currentPlay && state.currentPlayPlayer !== null && (
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-xs text-muted-foreground">
-                  {getGuandanPlayerName(state.currentPlayPlayer, state.players[state.currentPlayPlayer].isAI)} 出牌
-                </span>
-                <div className="flex flex-wrap justify-center gap-1">
+              <div
+                className={cn(
+                  "absolute flex flex-col items-center gap-1 transition-all duration-300"
+                )}
+                style={{
+                  ...(state.currentPlayPlayer === 0 && { bottom: "8%", left: "50%", transform: "translateX(-50%)" }),
+                  ...(state.currentPlayPlayer === 1 && { right: "8%", top: "50%", transform: "translateY(-50%)" }),
+                  ...(state.currentPlayPlayer === 2 && { top: "8%", left: "50%", transform: "translateX(-50%)" }),
+                  ...(state.currentPlayPlayer === 3 && { left: "8%", top: "50%", transform: "translateY(-50%)" }),
+                }}
+              >
+                <div className="flex gap-0.5">
                   {state.currentPlay.cards.map((card) => (
                     <PokerCardComponent
                       key={card.id}
@@ -448,117 +512,166 @@ export function GuandanGame({ onBack }: GuandanGameProps) {
                     />
                   ))}
                 </div>
-                <span className="text-xs font-medium text-muted-foreground">
+                <span className="text-[10px] text-white/80 font-medium whitespace-nowrap">
                   {guandanHandTypeName(state.currentPlay.type)}
                 </span>
               </div>
             )}
+
             {!state.currentPlay && state.phase === "playing" && (
-              <div className="text-xs text-muted-foreground mt-2">
-                新一轮开始，请出牌
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-white/50 text-sm">
+                  新一轮开始，请出牌
+                </span>
               </div>
             )}
           </div>
 
           {/* 右侧玩家 */}
-          <div className="shrink-0 flex flex-col items-center gap-1">
-            {renderPlayerInfo(1)}
-            <OpponentCardBacks count={state.players[1].hand.length} variant="right" />
+          <div className="shrink-0 flex flex-col justify-center pr-2">
+            <PlayerInfo index={1} state={state} />
           </div>
         </div>
 
-        {/* 操作按钮 - 始终在手牌上方 */}
-        {state.phase === "playing" && (
-          <div className="shrink-0 flex justify-center gap-2 py-1">
-            <Button
-              onClick={handleHint}
-              variant="secondary"
-              size="sm"
-              className="h-10 px-4 text-sm font-bold"
-            >
-              提示
-            </Button>
-            <Button
-              onClick={handlePass}
-              variant="outline"
-              size="sm"
-              disabled={!isPlayerTurn || state.currentPlay === null || state.currentPlayPlayer === 0}
-              className="h-10 px-4 text-sm font-bold"
-            >
-              不出
-            </Button>
-            <Button
-              onClick={handlePlay}
-              size="sm"
-              disabled={!isPlayerTurn || selectedCards.size === 0}
-              className="h-10 px-4 text-sm font-bold"
-            >
-              出牌
-            </Button>
-          </div>
-        )}
+        {/* 底部区域：按钮 + 玩家信息 + 手牌 */}
+        <div className="shrink-0 px-3 pb-2">
+          {/* 操作按钮 - 手牌上方偏右 */}
+          {state.phase === "playing" && (
+            <div className="flex justify-end gap-2 mb-1">
+              <Button
+                onClick={handleHint}
+                variant="secondary"
+                size="sm"
+                className="h-7 px-3 text-xs font-bold bg-white/90 hover:bg-white text-gray-800"
+              >
+                提示
+              </Button>
+              <Button
+                onClick={handlePass}
+                variant="outline"
+                size="sm"
+                disabled={!isPlayerTurn || state.currentPlay === null || state.currentPlayPlayer === 0}
+                className="h-7 px-3 text-xs font-bold bg-white/80 hover:bg-white text-gray-800 border-white/40"
+              >
+                不出
+              </Button>
+              <Button
+                onClick={handlePlay}
+                size="sm"
+                disabled={!isPlayerTurn || selectedCards.size === 0}
+                className="h-7 px-3 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                出牌
+              </Button>
+            </div>
+          )}
 
-        {/* 玩家手牌区 */}
-        <div className="shrink-0 flex flex-col gap-0.5 pb-1">
-          {renderPlayerInfo(0)}
-          <OverlappingHand
-            cards={state.players[0].hand}
-            selectedCards={selectedCards}
-            isPlayerTurn={isPlayerTurn}
-            onToggleCard={toggleCard}
-            currentLevel={state.currentLevel}
-          />
-        </div>
-      </main>
-
-      {/* 游戏结束弹窗 */}
-      {showResult && state.phase === "finished" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <h2 className="text-2xl font-bold text-center mb-4">
-              {state.winner === 0 || state.winner === 2 ? "我方赢了！" : "我方输了"}
-            </h2>
-
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between text-lg">
-                <span>赢家:</span>
-                <span className="font-bold">
-                  {state.winner !== null
-                    ? getGuandanPlayerName(state.winner, state.players[state.winner].isAI)
-                    : ""}
-                </span>
+          {/* 自己信息 + 手牌 */}
+          <div className="flex items-end justify-center gap-2">
+            {/* 自己头像 */}
+            <div className="shrink-0 flex flex-col items-center gap-0.5 mb-1">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2"
+                style={{
+                  backgroundColor: "rgba(59,130,246,0.25)",
+                  borderColor: "#3B82F6",
+                  color: "#93C5FD",
+                }}
+              >
+                我
               </div>
-              <div className="flex justify-between text-lg">
-                <span>获胜方:</span>
-                <span className="font-bold">
-                  {state.winningTeam === 0 ? "我方（玩家+对家）" : "对方（左方+右方）"}
-                </span>
-              </div>
-              <div className="flex justify-between text-base pt-2 border-t border-border">
-                <span>当前级牌:</span>
-                <span className="font-bold">{state.currentLevel}</span>
-              </div>
+              <span className="text-[10px] text-white/70">
+                {state.players[0].hand.length}张
+              </span>
             </div>
 
-            <div className="flex gap-3">
-              <Button
-                onClick={handleRestart}
-                className="flex-1 h-12 text-base font-bold"
-              >
-                再来一局
-              </Button>
-              {onBack && (
-                <Button
-                  variant="outline"
-                  onClick={onBack}
-                  className="flex-1 h-12 text-base font-bold"
-                >
-                  返回菜单
-                </Button>
+            {/* 手牌 */}
+            {state.phase === "playing" && (
+              <OverlappingHand
+                cards={state.players[0].hand}
+                selectedCards={selectedCards}
+                isPlayerTurn={isPlayerTurn}
+                onToggleCard={toggleCard}
+                currentLevel={state.currentLevel}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* 进贡/还贡中央面板 */}
+        {(state.phase === "tribute" || state.phase === "return-tribute") && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
+            <div className="bg-white rounded-xl p-4 max-w-lg w-full mx-4 shadow-2xl">
+              <h3 className="text-lg font-bold text-center text-gray-800 mb-1">
+                {state.phase === "tribute" ? "请选择一张牌进贡" : "请选择一张牌还贡"}
+              </h3>
+              <p className="text-xs text-gray-500 text-center mb-3">
+                {state.phase === "tribute"
+                  ? "请从手牌中选择一张牌进贡给对方"
+                  : "请从手牌中选择一张牌还给对方"}
+              </p>
+
+              {state.currentPlayer === 0 ? (
+                <>
+                  {/* 手牌选择区 */}
+                  <div className="overflow-x-auto pb-2 mb-3">
+                    <div className="flex gap-1 min-w-max px-1 justify-center">
+                      {state.players[0].hand.map((card) => (
+                        <button
+                          key={card.id}
+                          onClick={() => selectSingleCard(card.id)}
+                          className={cn(
+                            "shrink-0 rounded-md border-2 transition-all",
+                            selectedCards.has(card.id)
+                              ? "border-yellow-400 -translate-y-2 shadow-lg"
+                              : "border-transparent hover:border-gray-300"
+                          )}
+                        >
+                          <PokerCardComponent
+                            card={card}
+                            size="sm"
+                            style={{ width: "clamp(36px, 6vw, 48px)" }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={state.phase === "tribute" ? handleConfirmTribute : handleConfirmReturnTribute}
+                    disabled={selectedCards.size !== 1}
+                    className="w-full h-10 text-base font-bold bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    {state.phase === "tribute" ? "确认进贡" : "确认还贡"}
+                  </Button>
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="inline-block w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mb-2" />
+                  <p className="text-sm text-gray-600">
+                    等待 {getGuandanPlayerName(state.currentPlayer, state.players[state.currentPlayer].isAI)} 操作...
+                  </p>
+                </div>
               )}
             </div>
           </div>
-        </div>
+        )}
+      </div>
+
+      {/* 游戏结束弹窗 - 使用 GameResultModal */}
+      {gameResult && (
+        <GameResultModal
+          result={gameResult}
+          message={
+            state.winningTeam === 0
+              ? `恭喜！${getGuandanPlayerName(state.winner!, state.players[state.winner!].isAI)} 率先出完牌`
+              : "对方先出完牌，再接再厉"
+          }
+          onRestart={handleRestart}
+          onBack={() => {
+            if (onBack) onBack();
+          }}
+        />
       )}
     </div>
   );

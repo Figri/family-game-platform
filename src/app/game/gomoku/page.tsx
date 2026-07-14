@@ -13,7 +13,7 @@ function GomokuGameContent() {
 
   return (
     <GameWrapper>
-      <div className="flex flex-col h-full w-full overflow-hidden bg-background">
+      <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-background">
         {/* Header - compact */}
         <header
           className="shrink-0 flex items-center justify-between px-3 bg-background"

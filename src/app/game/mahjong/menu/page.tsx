@@ -40,10 +40,10 @@ export default function MahjongMenuPage() {
           </button>
           <div className="flex flex-col">
             <h1 className={cn("text-lg font-bold leading-tight", elderlyMode && "text-2xl")}>
-              四川麻将
+              麻将
             </h1>
             <span className={cn("text-xs text-muted-foreground", elderlyMode && "text-base")}>
-              血战到底
+              经典四人麻将
             </span>
           </div>
         </div>
@@ -58,7 +58,7 @@ export default function MahjongMenuPage() {
               选择游戏模式
             </CardTitle>
             <p className={cn("text-sm text-muted-foreground mt-1", elderlyMode && "text-base")}>
-              四川麻将血战到底，四人竞技
+              经典四人麻将，横屏体验
             </p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -116,45 +116,15 @@ export default function MahjongMenuPage() {
                     elderlyMode={elderlyMode}
                   />
                   <RuleSwitch
-                    label="可抢杠胡"
-                    checked={rules.enableQiangGangHu}
-                    onChange={() => toggleRule("enableQiangGangHu")}
-                    elderlyMode={elderlyMode}
-                  />
-                  <RuleSwitch
                     label="点炮胡"
                     checked={rules.enableDianPao}
                     onChange={() => toggleRule("enableDianPao")}
                     elderlyMode={elderlyMode}
                   />
                   <RuleSwitch
-                    label="自摸加番"
-                    checked={rules.enableZiMoFan}
-                    onChange={() => toggleRule("enableZiMoFan")}
-                    elderlyMode={elderlyMode}
-                  />
-                  <RuleSwitch
-                    label="杠上开花"
-                    checked={rules.enableGangShangKaiHua}
-                    onChange={() => toggleRule("enableGangShangKaiHua")}
-                    elderlyMode={elderlyMode}
-                  />
-                  <RuleSwitch
-                    label="海底捞月"
-                    checked={rules.enableHaiDiLaoYue}
-                    onChange={() => toggleRule("enableHaiDiLaoYue")}
-                    elderlyMode={elderlyMode}
-                  />
-                  <RuleSwitch
-                    label="换三张"
-                    checked={rules.enableSwapThree}
-                    onChange={() => toggleRule("enableSwapThree")}
-                    elderlyMode={elderlyMode}
-                  />
-                  <RuleSwitch
-                    label="定缺"
-                    checked={rules.enableLack}
-                    onChange={() => toggleRule("enableLack")}
+                    label="自摸"
+                    checked={rules.enableZiMo}
+                    onChange={() => toggleRule("enableZiMo")}
                     elderlyMode={elderlyMode}
                   />
                 </div>
@@ -190,21 +160,19 @@ export default function MahjongMenuPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className={cn("space-y-2 text-sm text-muted-foreground", elderlyMode && "text-base")}>
-            <p>1. 四人游戏，使用108张牌（无花牌）</p>
+            <p>1. 四人游戏，使用136张牌（含风牌、箭牌）</p>
             <p>2. 每人发13张牌，轮流摸牌出牌</p>
-            <p>3. 定缺：选择一门花色必须打完才能胡牌</p>
-            <p>4. 换三张：与对家交换三张同花色牌</p>
-            <p>5. 可碰、可杠（明杠/暗杠/补杠）</p>
-            <p>6. 血战到底：一家胡牌后，其余继续直到三家胡</p>
-            <p>7. 自摸加番，杠上开花、海底捞月额外加番</p>
-            <p>8. 胡牌公式：4副（顺子/刻子）+ 1对将</p>
+            <p>3. 不能吃，可以碰、杠（明杠/暗杠/补杠）</p>
+            <p>4. 可以自摸胡牌，也可以点炮胡牌</p>
+            <p>5. 一家胡牌后本局结束</p>
+            <p>6. 胡牌公式：4副（顺子/刻子）+ 1对将</p>
           </CardContent>
         </Card>
       </main>
 
       {/* Footer */}
       <footer className={cn("text-center py-4 text-xs text-muted-foreground border-t border-border", elderlyMode && "text-base")}>
-        家庭游戏平台 · 四川麻将
+        家庭游戏平台 · 麻将
       </footer>
     </div>
   );

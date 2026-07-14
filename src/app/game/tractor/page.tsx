@@ -8,7 +8,7 @@ function TractorGameContent() {
   const backUrl = "/family-game-platform/game/tractor/select";
 
   return (
-    <GameWrapper>
+    <GameWrapper landscape>
       <TractorGame onBack={() => { window.location.href = backUrl; }} />
     </GameWrapper>
   );

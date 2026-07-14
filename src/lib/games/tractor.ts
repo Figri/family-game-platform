@@ -316,7 +316,8 @@ export function validateTractorPlay(
   hand: PokerCard[],
   roundLeadSuit: Suit | null,
   trumpSuit: TrumpSuit,
-  level: RankDisplay
+  level: RankDisplay,
+  lastPlayed: TractorPattern | null,
 ): { valid: boolean; reason?: string } {
   if (cards.length === 0) return { valid: false, reason: "未选择牌" };
 
@@ -332,9 +333,34 @@ export function validateTractorPlay(
   // 首家出牌：合法即可
   if (roundLeadSuit === null) return { valid: true };
 
-  // 跟家出牌：需要检查是否跟了正确的花色
-  // 简化规则：如果首家出的是非主牌，跟家必须尽量跟同花色
-  // 这里简化处理，只要牌型合法即可（完整规则需要更复杂的跟牌验证）
+  // 跟家出牌：检查是否跟了正确的花色
+  const leadSuit = roundLeadSuit;
+
+  // 检查手牌中是否有该花色的非主牌
+  const hasLeadSuit = hand.some(c => !isTrumpCard(c, trumpSuit, level) && c.suit === leadSuit);
+
+  if (hasLeadSuit) {
+    // 必须所有牌都是该花色（非主牌）
+    const allFollowSuit = cards.every(c => !isTrumpCard(c, trumpSuit, level) && c.suit === leadSuit);
+    if (!allFollowSuit) {
+      return { valid: false, reason: `当前需要跟${getTrumpSuitName(leadSuit)}` };
+    }
+
+    // 如果首家出的是对子，且手牌有该花色的对子，必须跟对子
+    if (lastPlayed && lastPlayed.type === "pair") {
+      const handOfSuit = hand.filter(c => !isTrumpCard(c, trumpSuit, level) && c.suit === leadSuit);
+      const valueCounts = new Map<number, number>();
+      for (const c of handOfSuit) {
+        const v = getTractorCardValue(c, trumpSuit, level);
+        valueCounts.set(v, (valueCounts.get(v) || 0) + 1);
+      }
+      const hasPair = Array.from(valueCounts.values()).some(count => count >= 2);
+      if (hasPair && pattern.type !== "pair") {
+        return { valid: false, reason: "当前需要优先跟对子" };
+      }
+    }
+  }
+
   return { valid: true };
 }
 
@@ -500,23 +526,37 @@ export function doTractorBid(
 
   if (action.type === "pass") {
     const nextPlayer = ((playerIdx + 1) % 4) as TractorPlayerIndex;
-    // 如果所有人都pass，则庄家亮主（无主）
-    if (nextPlayer === state.dealer && state.bidInfo.player === null) {
+    // 辅助：进入出牌阶段，给庄家底牌
+    const enterPlaying = (trumpSuit: TrumpSuit, bidInfo: typeof state.bidInfo): TractorState => {
+      const dealer = state.dealer;
+      const newPlayers = [
+        { ...state.players[0] },
+        { ...state.players[1] },
+        { ...state.players[2] },
+        { ...state.players[3] },
+      ] as [TractorPlayerState, TractorPlayerState, TractorPlayerState, TractorPlayerState];
+      newPlayers[dealer] = {
+        ...newPlayers[dealer],
+        hand: sortTractorCards([...newPlayers[dealer].hand, ...state.bottomCards], trumpSuit, state.currentLevel)
+      };
       return {
         ...state,
         phase: "playing",
-        currentPlayer: state.dealer,
-        trumpSuit: "none",
-        bidInfo: { player: state.dealer, suit: "none", rank: state.currentLevel },
+        currentPlayer: dealer,
+        players: newPlayers,
+        trumpSuit,
+        bidInfo,
+        bottomSettled: false,
       };
+    };
+
+    // 如果所有人都pass，则庄家亮主（无主）
+    if (nextPlayer === state.dealer && state.bidInfo.player === null) {
+      return enterPlaying("none", { player: state.dealer, suit: "none", rank: state.currentLevel });
     }
     // 如果回到第一个亮主的人，结束亮主
     if (state.bidInfo.player !== null && nextPlayer === state.bidInfo.player) {
-      return {
-        ...state,
-        phase: "playing",
-        currentPlayer: state.dealer,
-      };
+      return enterPlaying(state.trumpSuit, state.bidInfo);
     }
     return {
       ...state,
@@ -615,7 +655,8 @@ export function doTractorPlay(
     player.hand,
     state.roundLeadSuit,
     state.trumpSuit,
-    state.currentLevel
+    state.currentLevel,
+    state.currentPlay,
   );
   if (!validation.valid) return state;
 
@@ -783,4 +824,59 @@ export function getTrumpSuitName(suit: TrumpSuit): string {
     diamond: "方块",
   };
   return names[suit];
+}
+
+/** 执行扣底 */
+export function doTractorSetBottom(state: TractorState, cards: PokerCard[]): TractorState {
+  if (state.phase !== "playing" || state.bottomSettled) return state;
+  if (cards.length !== state.bottomCards.length) return state;
+  const dealer = state.dealer;
+  const dealerHand = state.players[dealer].hand;
+  const cardIds = new Set(cards.map(c => c.id));
+  const handIds = new Set(dealerHand.map(c => c.id));
+  for (const id of cardIds) {
+    if (!handIds.has(id)) return state;
+  }
+  const newHand = dealerHand.filter(c => !cardIds.has(c.id));
+  const newPlayers = [
+    { ...state.players[0] },
+    { ...state.players[1] },
+    { ...state.players[2] },
+    { ...state.players[3] },
+  ] as [TractorPlayerState, TractorPlayerState, TractorPlayerState, TractorPlayerState];
+  newPlayers[dealer] = { ...newPlayers[dealer], hand: newHand };
+  return {
+    ...state,
+    players: newPlayers,
+    bottomCards: cards,
+    bottomSettled: true,
+  };
+}
+
+/** 获取跟牌提示 */
+export function getFollowHint(
+  hand: PokerCard[],
+  roundLeadSuit: Suit | null,
+  trumpSuit: TrumpSuit,
+  level: RankDisplay,
+  lastPlayed: TractorPattern | null,
+): { suit?: Suit; pair?: boolean; message?: string } {
+  if (!roundLeadSuit) return {};
+  const hasLeadSuit = hand.some(c => !isTrumpCard(c, trumpSuit, level) && c.suit === roundLeadSuit);
+  if (!hasLeadSuit) return {};
+
+  if (lastPlayed && lastPlayed.type === "pair") {
+    const handOfSuit = hand.filter(c => !isTrumpCard(c, trumpSuit, level) && c.suit === roundLeadSuit);
+    const valueCounts = new Map<number, number>();
+    for (const c of handOfSuit) {
+      const v = getTractorCardValue(c, trumpSuit, level);
+      valueCounts.set(v, (valueCounts.get(v) || 0) + 1);
+    }
+    const hasPair = Array.from(valueCounts.values()).some(count => count >= 2);
+    if (hasPair) {
+      return { suit: roundLeadSuit, pair: true, message: "请优先跟对子" };
+    }
+  }
+
+  return { suit: roundLeadSuit, message: `请跟${getTrumpSuitName(roundLeadSuit)}` };
 }

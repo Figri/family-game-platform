@@ -1,5 +1,5 @@
 /**
- * 四川麻将（血战到底）游戏逻辑
+ * 麻将游戏逻辑（标准规则）
  */
 
 import {
@@ -14,12 +14,7 @@ import {
   canConcealedKong,
   canAddKong,
   canHu,
-  canHuGeneral,
-  aiSelectLack,
   aiSelectDiscard,
-  hasFinishedLack,
-  performSwap,
-  selectSwapTiles,
   isSameTile,
 } from "./mahjong";
 
@@ -28,13 +23,8 @@ export interface GameRules {
   enableMingKong: boolean;
   enableAnKong: boolean;
   enableBuKong: boolean;
-  enableQiangGangHu: boolean;
   enableDianPao: boolean;
-  enableZiMoFan: boolean;
-  enableGangShangKaiHua: boolean;
-  enableHaiDiLaoYue: boolean;
-  enableSwapThree: boolean;
-  enableLack: boolean;
+  enableZiMo: boolean;
 }
 
 export const DEFAULT_RULES: GameRules = {
@@ -42,19 +32,13 @@ export const DEFAULT_RULES: GameRules = {
   enableMingKong: true,
   enableAnKong: true,
   enableBuKong: true,
-  enableQiangGangHu: true,
   enableDianPao: true,
-  enableZiMoFan: true,
-  enableGangShangKaiHua: true,
-  enableHaiDiLaoYue: true,
-  enableSwapThree: true,
-  enableLack: true,
+  enableZiMo: true,
 };
 
 export interface PlayerState {
   hand: Tile[];
   exposed: Tile[][]; // 碰/杠的牌组
-  lack: Suit | null;
   hasHu: boolean;
   huTile: Tile | null;
   isZimo: boolean;
@@ -65,8 +49,6 @@ export interface PlayerState {
 
 export type GamePhase =
   | "idle"
-  | "swapping"
-  | "lacking"
   | "playing"
   | "waiting_action"
   | "game_over";
@@ -87,11 +69,14 @@ export interface GameState {
     tile: Tile;
     sourcePlayer: number;
   } | null;
-  winnerOrder: number[];
+  winner: number | null;
   scores: number[];
   message: string;
-  gangShangKaiHua: boolean;
-  haiDiLaoYue: boolean;
+  gameResult: {
+    winnerName: string;
+    isZimo: boolean;
+    sourceName?: string;
+  } | null;
 }
 
 export function createInitialState(rules: GameRules): GameState {
@@ -102,7 +87,6 @@ export function createInitialState(rules: GameRules): GameState {
     {
       hand: sortTiles(hands[0]),
       exposed: [],
-      lack: null,
       hasHu: false,
       huTile: null,
       isZimo: false,
@@ -113,7 +97,6 @@ export function createInitialState(rules: GameRules): GameState {
     {
       hand: sortTiles(hands[1]),
       exposed: [],
-      lack: null,
       hasHu: false,
       huTile: null,
       isZimo: false,
@@ -124,7 +107,6 @@ export function createInitialState(rules: GameRules): GameState {
     {
       hand: sortTiles(hands[2]),
       exposed: [],
-      lack: null,
       hasHu: false,
       huTile: null,
       isZimo: false,
@@ -135,7 +117,6 @@ export function createInitialState(rules: GameRules): GameState {
     {
       hand: sortTiles(hands[3]),
       exposed: [],
-      lack: null,
       hasHu: false,
       huTile: null,
       isZimo: false,
@@ -145,109 +126,26 @@ export function createInitialState(rules: GameRules): GameState {
     },
   ];
 
-  return {
+  // 开局直接开始，庄家摸牌
+  const state: GameState = {
     players,
     wall,
     discardPile: [],
     currentPlayer: 0,
     dealer: 0,
-    phase: rules.enableSwapThree ? "swapping" : rules.enableLack ? "lacking" : "playing",
+    phase: "playing",
     turn: 0,
     lastDiscard: null,
     lastDraw: null,
     pendingAction: null,
-    winnerOrder: [],
+    winner: null,
     scores: [0, 0, 0, 0],
-    message: rules.enableSwapThree ? "请选择三张同花色的牌进行交换" : rules.enableLack ? "请选择定缺花色" : "游戏开始",
-    gangShangKaiHua: false,
-    haiDiLaoYue: false,
+    message: "游戏开始，庄家摸牌",
+    gameResult: null,
   };
-}
 
-/** 玩家选择换三张 */
-export function playerSelectSwap(
-  state: GameState,
-  playerIndex: number,
-  tiles: Tile[]
-): GameState {
-  if (state.phase !== "swapping") return state;
-  const newState = cloneState(state);
-  // 从手牌移除选中的牌
-  for (const t of tiles) {
-    const idx = newState.players[playerIndex].hand.findIndex((x) => x.id === t.id);
-    if (idx >= 0) newState.players[playerIndex].hand.splice(idx, 1);
-  }
-  // 暂存到exposed[0]作为标记
-  newState.players[playerIndex].exposed = [tiles];
-  return newState;
-}
-
-/** 执行换三张 */
-export function executeSwap(state: GameState): GameState {
-  const newState = cloneState(state);
-  const swaps = newState.players.map((p) => p.exposed[0] || []);
-
-  // 检查是否都选好了
-  if (swaps.some((s) => s.length !== 3)) {
-    // AI自动选
-    for (let i = 0; i < 4; i++) {
-      if (swaps[i].length === 0) {
-        const suit = aiSelectLack(newState.players[i].hand);
-        const selected = selectSwapTiles(newState.players[i].hand, suit);
-        if (selected.length === 3) {
-          swaps[i] = selected;
-          for (const t of selected) {
-            const idx = newState.players[i].hand.findIndex((x) => x.id === t.id);
-            if (idx >= 0) newState.players[i].hand.splice(idx, 1);
-          }
-        }
-      }
-    }
-  }
-
-  const hands = newState.players.map((p) => p.hand);
-  const newHands = performSwap(hands, swaps);
-
-  for (let i = 0; i < 4; i++) {
-    newState.players[i].hand = sortTiles(newHands[i]);
-    newState.players[i].exposed = [];
-  }
-
-  newState.phase = "lacking";
-  newState.message = "请选择定缺花色（必须打完该花色才能胡牌）";
-  return newState;
-}
-
-/** 玩家定缺 */
-export function playerSetLack(state: GameState, playerIndex: number, lack: Suit): GameState {
-  const newState = cloneState(state);
-  newState.players[playerIndex].lack = lack;
-  return newState;
-}
-
-/** AI自动定缺 */
-export function aiAutoLack(state: GameState): GameState {
-  const newState = cloneState(state);
-  for (let i = 1; i < 4; i++) {
-    if (!newState.players[i].lack) {
-      newState.players[i].lack = aiSelectLack(newState.players[i].hand);
-    }
-  }
-  return newState;
-}
-
-/** 检查是否所有人都定缺完毕 */
-export function allLackSelected(state: GameState): boolean {
-  return state.players.every((p) => p.lack !== null);
-}
-
-/** 开始游戏（定缺完成后） */
-export function startGame(state: GameState): GameState {
-  const newState = cloneState(state);
-  newState.phase = "playing";
-  newState.currentPlayer = newState.dealer;
-  newState.message = `轮到${newState.players[newState.currentPlayer].name}摸牌`;
-  return newState;
+  // 庄家先摸一张
+  return drawTile(state, 0);
 }
 
 /** 摸牌 */
@@ -263,11 +161,6 @@ export function drawTile(state: GameState, playerIndex: number): GameState {
   newState.players[playerIndex].hand.push(tile);
   newState.players[playerIndex].hand = sortTiles(newState.players[playerIndex].hand);
   newState.lastDraw = tile;
-
-  // 检查海底捞月
-  if (newState.wall.length === 0) {
-    newState.haiDiLaoYue = true;
-  }
 
   return newState;
 }
@@ -297,7 +190,7 @@ function checkOtherPlayerActions(
 ): GameState {
   const newState = cloneState(state);
 
-  // 按优先级检查胡->碰->杠（跳过已胡的玩家）
+  // 按优先级检查胡->碰->杠
   for (let offset = 1; offset <= 3; offset++) {
     const p = (discardPlayer + offset) % 4;
     if (newState.players[p].hasHu) continue;
@@ -306,20 +199,15 @@ function checkOtherPlayerActions(
 
     // 胡
     if (canHu([...hand, tile])) {
-      // 检查定缺
-      if (newState.players[p].lack && !hasFinishedLack(hand, newState.players[p].lack)) {
-        // 还有定缺花色，不能胡（简化规则）
-      } else {
-        newState.pendingAction = {
-          type: "hu",
-          player: p,
-          tile,
-          sourcePlayer: discardPlayer,
-        };
-        newState.phase = "waiting_action";
-        newState.message = `${newState.players[p].name} 可以胡牌！`;
-        return newState;
-      }
+      newState.pendingAction = {
+        type: "hu",
+        player: p,
+        tile,
+        sourcePlayer: discardPlayer,
+      };
+      newState.phase = "waiting_action";
+      newState.message = `${newState.players[p].name} 可以胡牌！`;
+      return newState;
     }
   }
 
@@ -415,10 +303,8 @@ export function doKong(state: GameState): GameState {
   newState.currentPlayer = player;
   newState.message = `${newState.players[player].name} 杠了 ${getTileDisplay(tile)}`;
 
-  // 杠后摸牌（杠上开花）
-  const afterDraw = drawTile(newState, player);
-  afterDraw.gangShangKaiHua = true;
-  return afterDraw;
+  // 杠后摸牌
+  return drawTile(newState, player);
 }
 
 /** 执行暗杠 */
@@ -442,9 +328,7 @@ export function doAnKong(state: GameState, playerIndex: number, tile: Tile): Gam
   newState.message = `${newState.players[playerIndex].name} 暗杠`;
 
   // 杠后摸牌
-  const afterDraw = drawTile(newState, playerIndex);
-  afterDraw.gangShangKaiHua = true;
-  return afterDraw;
+  return drawTile(newState, playerIndex);
 }
 
 /** 执行补杠 */
@@ -465,28 +349,8 @@ export function doBuKong(state: GameState, playerIndex: number, tile: Tile): Gam
   player.exposed[meldIdx].push(tile);
   newState.message = `${player.name} 补杠`;
 
-  // 检查抢杠胡
-  for (let offset = 1; offset <= 3; offset++) {
-    const p = (playerIndex + offset) % 4;
-    if (newState.players[p].hasHu) continue;
-    const testHand = [...newState.players[p].hand, tile];
-    if (canHu(testHand)) {
-      newState.pendingAction = {
-        type: "hu",
-        player: p,
-        tile,
-        sourcePlayer: playerIndex,
-      };
-      newState.phase = "waiting_action";
-      newState.message = `${newState.players[p].name} 抢杠胡！`;
-      return newState;
-    }
-  }
-
   // 杠后摸牌
-  const afterDraw = drawTile(newState, playerIndex);
-  afterDraw.gangShangKaiHua = true;
-  return afterDraw;
+  return drawTile(newState, playerIndex);
 }
 
 /** 执行胡 */
@@ -502,43 +366,31 @@ export function doHu(state: GameState): GameState {
   newState.players[player].hasHu = true;
   newState.players[player].huTile = tile;
   newState.players[player].isZimo = isZimo;
-  newState.winnerOrder.push(player);
+  newState.winner = player;
 
   // 计分
-  const baseScore = 1;
-  let fan = 1;
-  if (isZimo && newState.gangShangKaiHua) fan *= 2;
-  if (newState.haiDiLaoYue) fan *= 2;
-  if (isZimo) fan *= 2;
-
-  const score = baseScore * fan;
+  const score = isZimo ? 3 : 1;
   newState.players[player].score += score;
-
-  // 点炮者扣分
   if (!isZimo) {
     newState.players[sourcePlayer].score -= score;
   } else {
-    // 自摸：其他未胡玩家各扣分
     for (let i = 0; i < 4; i++) {
-      if (i !== player && !newState.players[i].hasHu) {
-        newState.players[i].score -= score / 3;
+      if (i !== player) {
+        newState.players[i].score -= 1;
       }
     }
   }
 
   newState.pendingAction = null;
+  newState.phase = "game_over";
   newState.message = `${newState.players[player].name} 胡了！${isZimo ? "（自摸）" : "（点炮）"}`;
+  newState.gameResult = {
+    winnerName: newState.players[player].name,
+    isZimo,
+    sourceName: isZimo ? undefined : newState.players[sourcePlayer].name,
+  };
 
-  // 血战到底：3家胡牌才结束
-  if (newState.winnerOrder.length >= 3) {
-    newState.phase = "game_over";
-    newState.message = "游戏结束！";
-    return newState;
-  }
-
-  // 胡牌者退出，继续游戏
-  newState.phase = "playing";
-  return nextPlayer(newState, player);
+  return newState;
 }
 
 /** 过（放弃操作） */
@@ -550,21 +402,13 @@ export function doPass(state: GameState): GameState {
   return nextPlayer(newState);
 }
 
-/** 轮到下一家（跳过已胡玩家） */
-function nextPlayer(state: GameState, fromPlayer?: number): GameState {
+/** 轮到下一家 */
+function nextPlayer(state: GameState): GameState {
   const newState = cloneState(state);
-  let p = fromPlayer !== undefined ? fromPlayer : newState.currentPlayer;
-  for (let i = 0; i < 4; i++) {
-    p = (p + 1) % 4;
-    if (!newState.players[p].hasHu) {
-      newState.currentPlayer = p;
-      newState.message = `轮到${newState.players[p].name}`;
-      return newState;
-    }
-  }
-  // 都胡了或只剩一家
-  newState.phase = "game_over";
-  newState.message = "游戏结束！";
+  let p = newState.currentPlayer;
+  p = (p + 1) % 4;
+  newState.currentPlayer = p;
+  newState.message = `轮到${newState.players[p].name}`;
   return newState;
 }
 
@@ -582,7 +426,6 @@ export function aiTurn(state: GameState): GameState {
   }
 
   const hand = player.hand;
-  const lack = player.lack;
 
   // 检查暗杠
   const anKongTile = canConcealedKong(hand);
@@ -598,20 +441,17 @@ export function aiTurn(state: GameState): GameState {
 
   // 检查自摸胡
   if (canHu(hand)) {
-    if (!lack || hasFinishedLack(hand, lack)) {
-      // 自摸胡
-      newState.pendingAction = {
-        type: "hu",
-        player: playerIdx,
-        tile: newState.lastDraw!,
-        sourcePlayer: playerIdx,
-      };
-      return doHu(newState);
-    }
+    newState.pendingAction = {
+      type: "hu",
+      player: playerIdx,
+      tile: newState.lastDraw!,
+      sourcePlayer: playerIdx,
+    };
+    return doHu(newState);
   }
 
   // 出牌
-  const discard = aiSelectDiscard(hand, lack);
+  const discard = aiSelectDiscard(hand, null);
   return discardTile(newState, playerIdx, discard);
 }
 
@@ -623,11 +463,8 @@ export function aiRespond(state: GameState): GameState {
   const player = newState.players[action.player];
   if (!player.isAI) return newState;
 
-  // AI策略：能胡就胡，能杠就杠，能碰就碰
   if (action.type === "hu") {
-    if (!player.lack || hasFinishedLack(player.hand, player.lack)) {
-      return doHu(newState);
-    }
+    return doHu(newState);
   }
   if (action.type === "kong") {
     return doKong(newState);
@@ -651,7 +488,7 @@ function cloneState(state: GameState): GameState {
     wall: [...state.wall],
     discardPile: [...state.discardPile],
     scores: [...state.scores],
-    winnerOrder: [...state.winnerOrder],
+    gameResult: state.gameResult ? { ...state.gameResult } : null,
   };
 }
 
@@ -696,8 +533,5 @@ export function checkSelfKong(state: GameState, playerIndex: number): { anKong: 
 /** 检查玩家是否可自摸胡 */
 export function checkSelfHu(state: GameState, playerIndex: number): boolean {
   const hand = state.players[playerIndex].hand;
-  const lack = state.players[playerIndex].lack;
-  if (!canHu(hand)) return false;
-  if (lack && !hasFinishedLack(hand, lack)) return false;
-  return true;
+  return canHu(hand);
 }

@@ -8,7 +8,7 @@ function GuandanGameContent() {
   const backUrl = "/family-game-platform/game/guandan/select";
 
   return (
-    <GameWrapper>
+    <GameWrapper landscape>
       <GuandanGame onBack={() => { window.location.href = backUrl; }} />
     </GameWrapper>
   );

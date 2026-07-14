@@ -27,6 +27,7 @@ import {
 } from "@/lib/games/tetris";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { GameResultModal } from "@/components/game-result-modal";
 
 /* ------------------------------------------------------------------ */
 /*  Canvas drawing helpers                                             */
@@ -481,7 +482,7 @@ export function TetrisGame({ mode }: TetrisGameProps) {
   return (
     <>
       {/* Portrait layout (default, shown on all screen sizes) */}
-      <div className="flex flex-col h-full w-full overflow-hidden">
+      <div className="flex flex-col h-[100dvh] w-full overflow-hidden">
         {/* Top info bar - compact single line */}
         <div
           className="shrink-0 flex items-center justify-between px-3 bg-[#FFF9F0]"
@@ -523,8 +524,8 @@ export function TetrisGame({ mode }: TetrisGameProps) {
 
         {/* Bottom controls area - compact */}
         <div
-          className="shrink-0 flex flex-col items-center gap-[6px] px-3 pb-2 pt-1 bg-[#FFF9F0] overflow-hidden"
-          style={{ touchAction: "manipulation" }}
+          className="shrink-0 flex flex-col items-center gap-[6px] px-3 pb-4 pt-1 bg-[#FFF9F0] overflow-hidden"
+          style={{ touchAction: "manipulation", marginBottom: "clamp(70px, 10dvh, 120px)" }}
         >
           {mode === "single" ? (
             <SinglePlayerControls
@@ -548,95 +549,8 @@ export function TetrisGame({ mode }: TetrisGameProps) {
         </div>
       </div>
 
-      {/* Landscape three-column layout (only for md+ screens, overlay via media query) */}
-      <div className="hidden md:flex game-page-landscape">
-        {/* LEFT PANEL */}
-        <aside
-          className="flex flex-col gap-3 shrink-0"
-          style={{ width: "22%" }}
-        >
-          <button
-            onClick={() => {
-              window.location.href =
-                "/family-game-platform/game/tetris/select";
-            }}
-            className="flex items-center gap-1 text-base font-semibold text-muted-foreground hover:text-foreground transition-colors"
-            style={{ touchAction: "manipulation" }}
-          >
-            <span className="text-xl leading-none">&larr;</span>
-            <span>返回</span>
-          </button>
-
-          <h2 className="text-xl font-bold leading-tight">俄罗斯方块</h2>
-
-          <div className="flex flex-col gap-2">
-            <InfoCard label="分数" value={String(player.score)} />
-            <InfoCard label="消行" value={String(player.lines)} />
-            {mode === "duo" && (
-              <InfoCard label="等级" value={String(player.level)} />
-            )}
-          </div>
-
-          <div className="flex-1" />
-
-          <div className="flex flex-col gap-2">
-            <Button
-              onClick={handlePause}
-              disabled={isIdle || isGameOver}
-              className="h-11 text-base font-semibold rounded-xl"
-            >
-              {isPaused ? "继续游戏" : "暂停"}
-            </Button>
-            <Button
-              onClick={handleRestart}
-              variant="outline"
-              className="h-11 text-base font-semibold rounded-xl"
-            >
-              重新开始
-            </Button>
-          </div>
-
-          {!isMobile && (
-            <p className="text-xs text-[#8B7355] leading-snug">
-              方向键/WASD 移动，上/W 旋转，空格 硬降，回车 暂停
-            </p>
-          )}
-        </aside>
-
-        {/* CENTER - Game Board */}
-        <main
-          className="flex items-center justify-center"
-          style={{ width: "45%" }}
-          ref={boardContainerRef}
-        >
-          <div className="border-2 border-[#F3D9C1] rounded-lg overflow-hidden bg-white">
-            <canvas ref={boardCanvasRef} className="block" />
-          </div>
-        </main>
-
-        {/* RIGHT PANEL */}
-        <aside
-          className="flex flex-col items-center justify-center gap-3 shrink-0"
-          style={{ width: "33%" }}
-        >
-          {mode === "single" ? (
-            <SinglePlayerControlsLandscape
-              onAction={(action) => handleAction(0, action)}
-            />
-          ) : (
-            <DuoControlsLandscape onAction={handleAction} />
-          )}
-
-          {isMobile && (
-            <p className="text-xs text-[#8B7355] text-center mt-2">
-              点击右侧按钮控制方块
-            </p>
-          )}
-        </aside>
-      </div>
-
-      {/* ---- Global overlay (idle / paused / game over) ---- */}
-      {(isIdle || isPaused || isGameOver) && (
+      {/* ---- Global overlay (idle / paused) ---- */}
+      {(isIdle || isPaused) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-[#FFF9F0] border-2 border-[#F3D9C1] rounded-2xl p-8 flex flex-col items-center gap-4 max-w-sm mx-4">
             {isIdle && (
@@ -661,52 +575,28 @@ export function TetrisGame({ mode }: TetrisGameProps) {
                 </Button>
               </>
             )}
-            {isGameOver && (
-              <>
-                <p className="text-2xl font-bold">游戏结束</p>
-                {mode === "duo" && (
-                  <p className="text-xl font-semibold">
-                    {state.winner === 0
-                      ? "玩家1 获胜！"
-                      : state.winner === 1
-                        ? "玩家2 获胜！"
-                        : "平局！"}
-                  </p>
-                )}
-                <div className="flex flex-col gap-2 w-full">
-                  {state.players.map((p, idx) => (
-                    <div
-                      key={idx}
-                      className="flex justify-between text-lg"
-                    >
-                      <span>{mode === "duo" ? `玩家${idx + 1}` : "得分"}</span>
-                      <span className="font-bold">{p.score}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleRestart}
-                    className="h-14 px-6 text-xl font-semibold rounded-xl"
-                  >
-                    重新开始
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      window.location.href =
-                        "/family-game-platform/game/tetris/menu";
-                    }}
-                    className="h-14 px-6 text-xl font-semibold rounded-xl"
-                  >
-                    返回菜单
-                  </Button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
+
+      <GameResultModal
+        result={isGameOver ? (mode === "single" ? "lose" : state.winner === 0 ? "win" : state.winner === 1 ? "win" : "draw") : null}
+        message={
+          isGameOver
+            ? mode === "single"
+              ? `得分: ${player.score}`
+              : state.winner === 0
+              ? "玩家1 获胜！"
+              : state.winner === 1
+              ? "玩家2 获胜！"
+              : "平局！"
+            : ""
+        }
+        onRestart={handleRestart}
+        onBack={() => {
+          window.location.href = "/family-game-platform/game/tetris/menu";
+        }}
+      />
     </>
   );
 }
@@ -913,76 +803,5 @@ function DuoSingleControls({
   );
 }
 
-/* Landscape controls - original single player (for md+ screens) */
-function SinglePlayerControlsLandscape({
-  onAction,
-}: {
-  onAction: (action: string) => void;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-3 w-full max-w-[240px]">
-      <div className="w-full">
-        <ControlButton
-          label="旋转"
-          onAction={() => onAction("rotate")}
-          colorClass="bg-[#FB923C] hover:bg-[#F97316] text-white"
-          fullWidth
-        />
-      </div>
-      <div className="flex w-full gap-2">
-        <ControlButton
-          label="左移"
-          onAction={() => onAction("left")}
-          repeatable
-          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
-        />
-        <ControlButton
-          label="下移"
-          onAction={() => onAction("down")}
-          repeatable
-          colorClass="bg-[#DBEAFE] hover:bg-[#BFDBFE] text-[#3D2C1E]"
-        />
-        <ControlButton
-          label="右移"
-          onAction={() => onAction("right")}
-          repeatable
-          colorClass="bg-[#E8E0D6] hover:bg-[#DDD5CB] text-[#3D2C1E]"
-        />
-      </div>
-      <div className="w-full">
-        <ControlButton
-          label="直接落底"
-          onAction={() => onAction("hardDrop")}
-          colorClass="bg-[#F97316] hover:bg-[#EA580C] text-white"
-          fullWidth
-        />
-      </div>
-    </div>
-  );
-}
 
-/* Landscape controls - duo */
-function DuoControlsLandscape({
-  onAction,
-}: {
-  onAction: (playerIndex: number, action: string) => void;
-}) {
-  return (
-    <div className="flex justify-center w-full gap-6">
-      {/* Player 1 */}
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-sm font-bold text-cyan-700">玩家1</span>
-        <SinglePlayerControlsLandscape
-          onAction={(a) => onAction(0, a)}
-        />
-      </div>
-      {/* Player 2 */}
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-sm font-bold text-orange-600">玩家2</span>
-        <SinglePlayerControlsLandscape
-          onAction={(a) => onAction(1, a)}
-        />
-      </div>
-    </div>
-  );
-}
+

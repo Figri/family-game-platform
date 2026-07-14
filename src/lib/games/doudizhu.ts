@@ -171,7 +171,7 @@ export function doBid(
       landlord: winner,
       currentPlayer: winner, // 地主先出牌
       bidHistory: newBidHistory,
-      bottomCards: [],
+      bottomCards: state.bottomCards, // 保留底牌用于展示
     };
   }
 
